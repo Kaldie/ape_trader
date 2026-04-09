@@ -1,0 +1,482 @@
+[
+  {
+    "id": "apeville",
+    "name": "Apeville",
+    "x": 0,
+    "y": 0,
+    "prosperity": 120,
+    "neighbors": ["stonehaven", "orefound", "coalpit", "smithy"],
+    "inventory": {
+      "wood": 100,
+      "stone": 20,
+      "ore": 10,
+      "coal": 15,
+      "metal": 5,
+      "furniture": 30,
+      "tools": 8,
+      "weapons": 3,
+      "armor": 2
+    },
+    "supply_demand": {
+      "wood": {
+        "supply": 100,
+        "demand": 30,
+        "base_buy_price": 10,
+        "base_sell_price": 8
+      },
+      "stone": {
+        "supply": 20,
+        "demand": 60,
+        "base_buy_price": 25,
+        "base_sell_price": 20
+      },
+      "ore": {
+        "supply": 10,
+        "demand": 50,
+        "base_buy_price": 40,
+        "base_sell_price": 35
+      },
+      "coal": {
+        "supply": 15,
+        "demand": 45,
+        "base_buy_price": 15,
+        "base_sell_price": 12
+      },
+      "metal": {
+        "supply": 5,
+        "demand": 70,
+        "base_buy_price": 50,
+        "base_sell_price": 45
+      },
+      "furniture": {
+        "supply": 30,
+        "demand": 20,
+        "base_buy_price": 60,
+        "base_sell_price": 50
+      },
+      "tools": {
+        "supply": 8,
+        "demand": 15,
+        "base_buy_price": 70,
+        "base_sell_price": 60
+      },
+      "weapons": {
+        "supply": 3,
+        "demand": 10,
+        "base_buy_price": 100,
+        "base_sell_price": 85
+      },
+      "armor": {
+        "supply": 2,
+        "demand": 8,
+        "base_buy_price": 120,
+        "base_sell_price": 100
+      }
+    },
+    "consumption": {
+      "cycle_hours": 24,
+      "prosperity_increase_if_met": 5,
+      "prosperity_decrease_if_not_met": 10,
+      "required": {
+        "wood": 15,
+        "coal": 10,
+        "metal": 3
+      }
+    },
+    "optional_consumption": {
+      "cycle_hours": 24,
+      "prosperity_boost_per_unit": 1,
+      "base_amount": 2,
+      "prosperity_scale_factor": 0.01,
+      "optional": {
+        "tools": 1,
+        "weapons": 1,
+        "armor": 1
+      }
+    }
+  },
+  {
+    "id": "stonehaven",
+    "name": "Stonehaven",
+    "x": -8,
+    "y": 4,
+    "prosperity": 110,
+    "neighbors": ["apeville", "orefound", "coalpit", "smithy"],
+    "inventory": {
+      "wood": 30,
+      "stone": 120,
+      "ore": 15,
+      "coal": 20,
+      "metal": 8,
+      "furniture": 45,
+      "tools": 12,
+      "weapons": 5,
+      "armor": 4
+    },
+    "supply_demand": {
+      "wood": {
+        "supply": 30,
+        "demand": 80,
+        "base_buy_price": 10,
+        "base_sell_price": 8
+      },
+      "stone": {
+        "supply": 120,
+        "demand": 25,
+        "base_buy_price": 25,
+        "base_sell_price": 20
+      },
+      "ore": {
+        "supply": 15,
+        "demand": 55,
+        "base_buy_price": 40,
+        "base_sell_price": 35
+      },
+      "coal": {
+        "supply": 20,
+        "demand": 50,
+        "base_buy_price": 15,
+        "base_sell_price": 12
+      },
+      "metal": {
+        "supply": 8,
+        "demand": 65,
+        "base_buy_price": 50,
+        "base_sell_price": 45
+      },
+      "furniture": {
+        "supply": 45,
+        "demand": 15,
+        "base_buy_price": 60,
+        "base_sell_price": 50
+      },
+      "tools": {
+        "supply": 12,
+        "demand": 10,
+        "base_buy_price": 70,
+        "base_sell_price": 60
+      },
+      "weapons": {
+        "supply": 5,
+        "demand": 8,
+        "base_buy_price": 100,
+        "base_sell_price": 85
+      },
+      "armor": {
+        "supply": 4,
+        "demand": 6,
+        "base_buy_price": 120,
+        "base_sell_price": 100
+      }
+    },
+    "consumption": {
+      "cycle_hours": 24,
+      "prosperity_increase_if_met": 5,
+      "prosperity_decrease_if_not_met": 10,
+      "required": {
+        "wood": 12,
+        "ore": 8,
+        "furniture": 2
+      }
+    },
+    "optional_consumption": {
+      "cycle_hours": 24,
+      "prosperity_boost_per_unit": 1,
+      "base_amount": 2,
+      "prosperity_scale_factor": 0.01,
+      "optional": {
+        "tools": 2,
+        "weapons": 1,
+        "armor": 2
+      }
+    }
+  },
+  {
+    "id": "orefound",
+    "name": "Orefound",
+    "x": 6,
+    "y": 5,
+    "prosperity": 135,
+    "neighbors": ["apeville", "stonehaven", "coalpit", "smithy"],
+    "inventory": {
+      "wood": 25,
+      "stone": 40,
+      "ore": 150,
+      "coal": 30,
+      "metal": 10,
+      "furniture": 8,
+      "tools": 4,
+      "weapons": 2,
+      "armor": 1
+    },
+    "supply_demand": {
+      "wood": {
+        "supply": 25,
+        "demand": 75,
+        "base_buy_price": 10,
+        "base_sell_price": 8
+      },
+      "stone": {
+        "supply": 40,
+        "demand": 70,
+        "base_buy_price": 25,
+        "base_sell_price": 20
+      },
+      "ore": {
+        "supply": 150,
+        "demand": 20,
+        "base_buy_price": 40,
+        "base_sell_price": 35
+      },
+      "coal": {
+        "supply": 30,
+        "demand": 40,
+        "base_buy_price": 15,
+        "base_sell_price": 12
+      },
+      "metal": {
+        "supply": 10,
+        "demand": 60,
+        "base_buy_price": 50,
+        "base_sell_price": 45
+      },
+      "furniture": {
+        "supply": 8,
+        "demand": 80,
+        "base_buy_price": 60,
+        "base_sell_price": 50
+      },
+      "tools": {
+        "supply": 4,
+        "demand": 20,
+        "base_buy_price": 70,
+        "base_sell_price": 60
+      },
+      "weapons": {
+        "supply": 2,
+        "demand": 15,
+        "base_buy_price": 100,
+        "base_sell_price": 85
+      },
+      "armor": {
+        "supply": 1,
+        "demand": 12,
+        "base_buy_price": 120,
+        "base_sell_price": 100
+      }
+    },
+    "consumption": {
+      "cycle_hours": 24,
+      "prosperity_increase_if_met": 6,
+      "prosperity_decrease_if_not_met": 12,
+      "required": {
+        "wood": 18,
+        "stone": 10,
+        "metal": 5
+      }
+    },
+    "optional_consumption": {
+      "cycle_hours": 24,
+      "prosperity_boost_per_unit": 1,
+      "base_amount": 2,
+      "prosperity_scale_factor": 0.01,
+      "optional": {
+        "tools": 3,
+        "weapons": 2,
+        "armor": 1
+      }
+    }
+  },
+  {
+    "id": "coalpit",
+    "name": "Coalpit",
+    "x": 4,
+    "y": -7,
+    "prosperity": 105,
+    "neighbors": ["apeville", "stonehaven", "orefound", "smithy"],
+    "inventory": {
+      "wood": 50,
+      "stone": 35,
+      "ore": 25,
+      "coal": 200,
+      "metal": 6,
+      "furniture": 5,
+      "tools": 3,
+      "weapons": 1,
+      "armor": 1
+    },
+    "supply_demand": {
+      "wood": {
+        "supply": 50,
+        "demand": 70,
+        "base_buy_price": 10,
+        "base_sell_price": 8
+      },
+      "stone": {
+        "supply": 35,
+        "demand": 65,
+        "base_buy_price": 25,
+        "base_sell_price": 20
+      },
+      "ore": {
+        "supply": 25,
+        "demand": 60,
+        "base_buy_price": 40,
+        "base_sell_price": 35
+      },
+      "coal": {
+        "supply": 200,
+        "demand": 15,
+        "base_buy_price": 15,
+        "base_sell_price": 12
+      },
+      "metal": {
+        "supply": 6,
+        "demand": 55,
+        "base_buy_price": 50,
+        "base_sell_price": 45
+      },
+      "furniture": {
+        "supply": 5,
+        "demand": 90,
+        "base_buy_price": 60,
+        "base_sell_price": 50
+      },
+      "tools": {
+        "supply": 3,
+        "demand": 25,
+        "base_buy_price": 70,
+        "base_sell_price": 60
+      },
+      "weapons": {
+        "supply": 1,
+        "demand": 18,
+        "base_buy_price": 100,
+        "base_sell_price": 85
+      },
+      "armor": {
+        "supply": 1,
+        "demand": 14,
+        "base_buy_price": 120,
+        "base_sell_price": 100
+      }
+    },
+    "consumption": {
+      "cycle_hours": 24,
+      "prosperity_increase_if_met": 5,
+      "prosperity_decrease_if_not_met": 11,
+      "required": {
+        "wood": 20,
+        "stone": 8,
+        "metal": 2
+      }
+    },
+    "optional_consumption": {
+      "cycle_hours": 24,
+      "prosperity_boost_per_unit": 1,
+      "base_amount": 2,
+      "prosperity_scale_factor": 0.01,
+      "optional": {
+        "tools": 2,
+        "weapons": 1,
+        "armor": 1
+      }
+    }
+  },
+  {
+    "id": "smithy",
+    "name": "Smithy",
+    "x": 11,
+    "y": -2,
+    "prosperity": 145,
+    "neighbors": ["apeville", "stonehaven", "orefound", "coalpit"],
+    "inventory": {
+      "wood": 20,
+      "stone": 30,
+      "ore": 80,
+      "coal": 12,
+      "metal": 80,
+      "furniture": 55,
+      "tools": 60,
+      "weapons": 40,
+      "armor": 30
+    },
+    "supply_demand": {
+      "wood": {
+        "supply": 20,
+        "demand": 85,
+        "base_buy_price": 10,
+        "base_sell_price": 8
+      },
+      "stone": {
+        "supply": 30,
+        "demand": 75,
+        "base_buy_price": 25,
+        "base_sell_price": 20
+      },
+      "ore": {
+        "supply": 80,
+        "demand": 30,
+        "base_buy_price": 40,
+        "base_sell_price": 35
+      },
+      "coal": {
+        "supply": 12,
+        "demand": 70,
+        "base_buy_price": 15,
+        "base_sell_price": 12
+      },
+      "metal": {
+        "supply": 80,
+        "demand": 40,
+        "base_buy_price": 50,
+        "base_sell_price": 45
+      },
+      "furniture": {
+        "supply": 55,
+        "demand": 30,
+        "base_buy_price": 60,
+        "base_sell_price": 50
+      },
+      "tools": {
+        "supply": 60,
+        "demand": 5,
+        "base_buy_price": 70,
+        "base_sell_price": 60
+      },
+      "weapons": {
+        "supply": 40,
+        "demand": 3,
+        "base_buy_price": 100,
+        "base_sell_price": 85
+      },
+      "armor": {
+        "supply": 30,
+        "demand": 2,
+        "base_buy_price": 120,
+        "base_sell_price": 100
+      }
+    },
+    "consumption": {
+      "cycle_hours": 24,
+      "prosperity_increase_if_met": 7,
+      "prosperity_decrease_if_not_met": 13,
+      "required": {
+        "ore": 15,
+        "coal": 12,
+        "wood": 10
+      }
+    },
+    "optional_consumption": {
+      "cycle_hours": 24,
+      "prosperity_boost_per_unit": 2,
+      "base_amount": 3,
+      "prosperity_scale_factor": 0.015,
+      "optional": {
+        "tools": 5,
+        "weapons": 3,
+        "armor": 2
+      }
+    }
+  }
+]

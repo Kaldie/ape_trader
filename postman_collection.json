@@ -1,0 +1,388 @@
+{
+    "info": {
+        "_postman_id": "cd7ab622-e0f6-4ef2-ada1-0c3388f83a9a",
+        "name": "ApeTrader API",
+        "description": "Postman collection for testing the ApeTrader economic simulation backend.\n\nFlow: Register Player -> Create Trader -> Market/Trade/Travel endpoints.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{trader_token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "item": [
+        {
+            "name": "Players",
+            "item": [
+                {
+                    "name": "Register Player",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status code is 201\", function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData.player && jsonData.player.id) {",
+                                    "    pm.collectionVariables.set(\"player_id\", jsonData.player.id);",
+                                    "}",
+                                    "if (jsonData.player && jsonData.player.email) {",
+                                    "    pm.collectionVariables.set(\"player_email\", jsonData.player.email);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Alice Trader\",\n    \"email\": \"alice@example.com\",\n    \"password\": \"super-secret-123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/players/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "players",
+                                "register"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Traders",
+            "item": [
+                {
+                    "name": "Create Trader",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"Status code is 201\", function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "var jsonData = pm.response.json();",
+                                    "if (jsonData.token) {",
+                                    "    pm.collectionVariables.set(\"trader_token\", jsonData.token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"player_id\": \"{{player_id}}\",\n    \"name\": \"Wood Trader Bot\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/traders",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "traders"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Travel",
+            "item": [
+                {
+                    "name": "Get Travel Status",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/travel/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "travel",
+                                "status"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Start Travel",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"destination_town_id\": \"{{otherTownId}}\",\n    \"equipment\": \"feet\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/travel/start",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "travel",
+                                "start"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Market",
+            "description": "These endpoints are town-position restricted. The trader must be physically in {{townId}} and not in transit.",
+            "item": [
+                {
+                    "name": "Get Market Prices (Current Town)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/market/{{townId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "market",
+                                "{{townId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Bulletin Board (Current Town)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/bulletin/{{townId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "bulletin",
+                                "{{townId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Town Details (Current Town)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/town/{{townId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "town",
+                                "{{townId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Market Prices (Other Town - should be 403)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/market/{{otherTownId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "market",
+                                "{{otherTownId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Trading",
+            "item": [
+                {
+                    "name": "Execute Buy",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"town_id\": \"{{townId}}\",\n    \"resource\": \"wood\",\n    \"quantity\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/trade/buy",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "trade",
+                                "buy"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Execute Sell",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"town_id\": \"{{townId}}\",\n    \"resource\": \"wood\",\n    \"quantity\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/trade/sell",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "trade",
+                                "sell"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Trade History",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/trade/history",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "trade",
+                                "history"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:8080",
+            "type": "string"
+        },
+        {
+            "key": "townId",
+            "value": "town_1",
+            "type": "string"
+        },
+        {
+            "key": "otherTownId",
+            "value": "town_2",
+            "type": "string"
+        },
+        {
+            "key": "player_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "player_email",
+            "value": "alice@example.com",
+            "type": "string"
+        },
+        {
+            "key": "trader_token",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}

@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: apetrader_postgres
+    environment:
+      POSTGRES_USER: apetrader
+      POSTGRES_PASSWORD: apetrader_pass
+      POSTGRES_DB: apetrader_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U apetrader -d apetrader_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: apetrader_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: apetrader
+      DB_PASSWORD: apetrader_pass
+      DB_NAME: apetrader_db
+    ports:
+      - "8080:8080"
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    name: ape-trader-api_app_net
+    driver: bridge

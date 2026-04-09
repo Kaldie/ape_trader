@@ -1,0 +1,789 @@
+openapi: 3.0.0
+info:
+  title: ApeTrader API
+  description: API-first multiplayer economic simulation game backend
+  version: 1.0.0
+  contact:
+    name: ApeTrader Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.apetrader.com
+    description: Production server
+
+paths:
+  /market/{town_id}:
+    get:
+      summary: Get current market prices for a town
+      description: Retrieves real-time buy/sell prices for resources in a town. Requires trader authentication.
+      operationId: getMarketPrices
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: town_id
+          in: path
+          required: true
+          description: The ID of the town
+          schema:
+            type: string
+            example: "town_1"
+        - name: player_id
+          in: query
+          required: false
+          description: Optional player ID to apply reputation modifiers to prices
+          schema:
+            type: string
+            example: "player_1"
+      responses:
+        '200':
+          description: Market prices retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  town_id:
+                    type: string
+                    example: "town_1"
+                  player_id:
+                    type: string
+                    example: "player_1"
+                  prices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MarketPrice'
+        '404':
+          description: Town or player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bulletin/{town_id}:
+    get:
+      summary: Get bulletin board entry for a town
+      description: Retrieves a stale price snapshot from the bulletin board. Entries expire after 24 hours and are not updated each tick. Requires trader authentication.
+      operationId: getBulletinEntry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: town_id
+          in: path
+          required: true
+          description: The ID of the town
+          schema:
+            type: string
+            example: "town_1"
+      responses:
+        '200':
+          description: Bulletin board entry retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulletinBoardEntry'
+        '404':
+          description: Bulletin board entry not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Bulletin board entry has expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trade/buy:
+    post:
+      summary: Execute a buy trade
+      description: Purchase resources from a town. Validates player location, funds, and physics constraints (weight/volume). Requires trader authentication.
+      operationId: buyTrade
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TradeRequest'
+      responses:
+        '200':
+          description: Trade executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeResponse'
+        '400':
+          description: Trade validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Player or town not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /town/{town_id}:
+    get:
+      summary: Retrieve town details
+      description: Returns an authenticated view of a town including inventory, prices, production recipes, and consumption settings.
+      operationId: getTown
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: town_id
+          required: true
+          schema:
+            type: string
+          description: The ID of the town to inspect
+      responses:
+        '200':
+          description: Town retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TownResponse'
+        '401':
+          description: Missing or invalid trader token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Town or player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trade/history:
+    get:
+      summary: Retrieve trade history
+      description: Returns recent buy and sell trades for the authenticated trader's player.
+      operationId: getTradeHistory
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Trade history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeHistoryResponse'
+        '401':
+          description: Missing or invalid trader token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /trade/sell:
+    post:
+      summary: Execute a sell trade
+      description: Sell resources to a town. Validates player location and inventory ownership. Requires trader authentication.
+      operationId: sellTrade
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TradeRequest'
+      responses:
+        '200':
+          description: Trade executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradeResponse'
+        '400':
+          description: Trade validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Player or town not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /traders:
+    post:
+      summary: Create a new trader
+      description: Creates a new AI trading agent for a player. Returns a bearer token for authentication.
+      operationId: createTrader
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTraderRequest'
+      responses:
+        '201':
+          description: Trader created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTraderResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /players/register:
+    post:
+      summary: Register a new player
+      description: Creates a new player account with local credentials. Local passwords are stored as salted+peppered hashes.
+      operationId: registerPlayer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPlayerRequest'
+      responses:
+        '201':
+          description: Player registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterPlayerResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Player not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    MarketPrice:
+      type: object
+      required:
+        - resource
+        - buy
+        - sell
+      properties:
+        resource:
+          type: string
+          description: Resource identifier
+          enum:
+            - wood
+            - stone
+            - ore
+            - coal
+            - metal
+            - furniture
+            - tools
+            - weapons
+            - armor
+          example: "wood"
+        buy:
+          type: integer
+          format: int64
+          description: Price to buy from town (in @)
+          example: 10
+        sell:
+          type: integer
+          format: int64
+          description: Price to sell to town (in @)
+          example: 8
+
+    BulletinBoardEntry:
+      type: object
+      required:
+        - town_id
+        - prices
+        - min_amount
+        - max_amount
+        - timestamp
+        - expires_at
+      properties:
+        town_id:
+          type: string
+          example: "town_1"
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketPrice'
+        min_amount:
+          type: object
+          description: Minimum available amounts per resource
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            wood: 0
+            stone: 0
+        max_amount:
+          type: object
+          description: Maximum available amounts per resource
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            wood: 100
+            stone: 120
+        timestamp:
+          type: string
+          format: date-time
+          description: When the bulletin board entry was created
+          example: "2026-04-03T12:00:00Z"
+        expires_at:
+          type: string
+          format: date-time
+          description: When the bulletin board entry expires (24 hours after creation)
+          example: "2026-04-04T12:00:00Z"
+
+    TradeRequest:
+      type: object
+      required:
+        - town_id
+        - resource
+        - quantity
+      properties:
+        town_id:
+          type: string
+          description: The ID of the town to trade with
+          example: "town_1"
+        resource:
+          type: string
+          description: The resource to buy
+          enum:
+            - wood
+            - stone
+            - ore
+            - coal
+            - metal
+            - furniture
+            - tools
+            - weapons
+            - armor
+          example: "wood"
+        quantity:
+          type: integer
+          format: int64
+          description: Quantity to purchase
+          example: 5
+
+    TradeResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Trade completed successfully"
+        new_balance:
+          type: integer
+          format: int64
+          description: Player's balance after trade (in @)
+          example: 50
+        new_inventory:
+          type: object
+          description: Player's updated inventory quantities
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            wood: 5
+            stone: 0
+        total_cost:
+          type: integer
+          format: int64
+          description: Total cost of the trade (in @)
+    TradeHistoryEntry:
+      type: object
+      required:
+        - player_id
+        - town_id
+        - resource_id
+        - quantity
+        - price_per_unit
+        - total_cost
+        - trade_type
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        player_id:
+          type: string
+        town_id:
+          type: string
+        resource_id:
+          type: string
+        quantity:
+          type: integer
+          format: int64
+        price_per_unit:
+          type: integer
+          format: int64
+        total_cost:
+          type: integer
+          format: int64
+        trade_type:
+          type: string
+          enum:
+            - buy
+            - sell
+        created_at:
+          type: string
+          format: date-time
+    TradeHistoryResponse:
+      type: object
+      required:
+        - success
+        - history
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeHistoryEntry'
+    TownConsumption:
+      type: object
+      properties:
+        cycle_hours:
+          type: integer
+          format: int64
+        prosperity_increase_if_met:
+          type: integer
+          format: int64
+        prosperity_decrease_if_not_met:
+          type: integer
+          format: int64
+        required:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+    TownOptionalConsumption:
+      type: object
+      properties:
+        cycle_hours:
+          type: integer
+          format: int64
+        prosperity_boost_per_unit:
+          type: integer
+          format: int64
+        base_amount:
+          type: integer
+          format: int64
+        prosperity_scale_factor:
+          type: number
+          format: double
+        optional:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+    RefineRecipe:
+      type: object
+      properties:
+        recipe_id:
+          type: string
+        name:
+          type: string
+        inputs:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        output:
+          type: string
+        output_quantity:
+          type: integer
+          format: int64
+        max_batches_per_cycle:
+          type: integer
+          format: int64
+        cycle_hours:
+          type: integer
+          format: int64
+    TownViewModel:
+      type: object
+      required:
+        - id
+        - name
+        - prosperity
+        - neighbors
+        - inventory
+        - prices
+        - consumption
+        - optional_consumption
+        - production
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prosperity:
+          type: integer
+          format: int64
+        neighbors:
+          type: array
+          items:
+            type: string
+        inventory:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketPrice'
+        consumption:
+          $ref: '#/components/schemas/TownConsumption'
+        optional_consumption:
+          $ref: '#/components/schemas/TownOptionalConsumption'
+        production:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefineRecipe'
+        updated_at:
+          type: string
+          format: date-time
+    TownResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        town:
+          $ref: '#/components/schemas/TownViewModel'
+          example: 50
+
+    CreateTraderRequest:
+      type: object
+      required:
+        - player_id
+        - name
+      properties:
+        player_id:
+          type: string
+          description: The ID of the player who owns this trader
+          example: "player_1"
+        name:
+          type: string
+          description: Display name for the trader
+          minLength: 1
+          maxLength: 100
+          example: "Wood Trader Bot"
+
+    CreateTraderResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Trader created successfully"
+        trader:
+          $ref: '#/components/schemas/Trader'
+        token:
+          type: string
+          description: Bearer token for trader authentication
+          example: "trader_abc123def456"
+
+    Trader:
+      type: object
+      required:
+        - id
+        - player_id
+        - name
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique trader identifier
+          example: "trader_abc123"
+        player_id:
+          type: string
+          description: ID of the player who owns this trader
+          example: "player_1"
+        name:
+          type: string
+          description: Display name for the trader
+          example: "Wood Trader Bot"
+        created_at:
+          type: string
+          format: date-time
+          description: When the trader was created
+          example: "2024-01-01T12:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: When the trader was last updated
+          example: "2024-01-01T12:00:00Z"
+
+    RegisterPlayerRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Alice"
+        email:
+          type: string
+          format: email
+          example: "alice@example.com"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          example: "strong-password-123"
+
+    RegisteredPlayer:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - location
+        - balance
+        - identity_provider
+      properties:
+        id:
+          type: string
+          example: "player_a1b2c3d4e5f6a7b8"
+        name:
+          type: string
+          example: "Alice"
+        email:
+          type: string
+          format: email
+          example: "alice@example.com"
+        location:
+          type: string
+          example: "town_1"
+        balance:
+          type: integer
+          format: int64
+          example: 100
+        identity_provider:
+          type: string
+          example: "local"
+
+    RegisterPlayerResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Player registered successfully"
+        player:
+          $ref: '#/components/schemas/RegisteredPlayer'
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: "Player not found"
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Bearer token obtained from trader creation
+
+tags:
+  - name: Market
+    description: Market and pricing endpoints
+  - name: Trading
+    description: Trade execution endpoints
+  - name: Traders
+    description: Trader management endpoints
