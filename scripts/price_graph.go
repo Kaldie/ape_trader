@@ -80,7 +80,11 @@ func main() {
 		fail(fmt.Errorf("minutes must be non-negative"))
 	}
 
-	engine := market.NewMarketEngineWithTowns(market.LoadTownsFromJSON(*inputPath))
+	towns, err := market.LoadTownsFromJSON(*inputPath)
+	if err != nil {
+		fail(err)
+	}
+	engine := market.NewMarketEngineWithTowns(towns)
 	report, err := buildReport(*inputPath, *minutes, engine)
 	if err != nil {
 		fail(err)

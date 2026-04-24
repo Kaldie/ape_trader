@@ -74,7 +74,6 @@ type TradeHistoryResponse struct {
 
 type TravelRequest struct {
 	DestinationTownID string `json:"destination_town_id" binding:"required"`
-	Method            string `json:"method"`
 }
 
 type TravelResponse struct {
@@ -569,8 +568,8 @@ func (s *Server) handleTravelStart(c *gin.Context) {
 		return
 	}
 
-	if err := s.engine.StartTravel(actor, req.DestinationTownID, req.Method); err != nil {
-		log.Printf("travel start rejected trader=%s from=%s to=%s method=%s err=%v", actor.ID, actor.Location, req.DestinationTownID, req.Method, err)
+	if err := s.engine.StartTravel(actor, req.DestinationTownID); err != nil {
+		log.Printf("travel start rejected trader=%s from=%s to=%s err=%v", actor.ID, actor.Location, req.DestinationTownID, err)
 		status := http.StatusBadRequest
 		if err == market.ErrTownNil || err == market.ErrInvalidDestinationTown {
 			status = http.StatusNotFound

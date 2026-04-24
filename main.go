@@ -38,12 +38,18 @@ func main() {
 				log.Printf("Warning: Failed to initialize database schema: %v", err)
 			}
 
+			jsonTowns, jsonErr := market.LoadTownsFromJSON("towns.json")
+			if jsonErr != nil {
+				log.Fatalf("failed to load towns.json: %v", jsonErr)
+			}
+
+			if err := database.SeedTowns(jsonTowns); err != nil {
+				log.Printf("Warning: Failed to seed towns to database: %v", err)
+			}
+
 			towns, err = database.LoadTowns()
 			if err != nil {
 				log.Printf("Warning: Failed to load towns from database: %v", err)
-				towns = nil
-			} else if len(towns) == 0 {
-				log.Printf("No towns in database, will seed defaults after engine init")
 				towns = nil
 			} else {
 				log.Printf("Loaded %d towns from PostgreSQL", len(towns))
@@ -51,18 +57,8 @@ func main() {
 		}
 	}
 
-	needsSeed := database != nil && len(towns) == 0
-
 	engine := market.NewMarketEngineWithTownsAndStore(towns, database)
 	engine.StartMinuteTick()
-
-	if needsSeed {
-		if err := database.SeedTowns(engine.Towns); err != nil {
-			log.Printf("Warning: Failed to seed towns to database: %v", err)
-		} else {
-			log.Printf("Seeded %d towns to database", len(engine.Towns))
-		}
-	}
 
 	server := api.NewServer(engine, database)
 	log.Println("Starting API server on :8080")

@@ -488,7 +488,9 @@ func (db *Database) SeedTowns(towns map[string]*models.Town) error {
 		); err != nil {
 			return err
 		}
+	}
 
+	for _, town := range towns {
 		for _, neighborID := range town.Neighbors {
 			if _, ok := towns[neighborID]; !ok {
 				continue

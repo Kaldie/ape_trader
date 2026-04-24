@@ -4,6 +4,7 @@ import (
 	"ape-trader/internal/models"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -55,10 +56,14 @@ type MarketEngine struct {
 }
 
 func NewMarketEngine() *MarketEngine {
-	return NewMarketEngineWithTowns(loadTownsFromJSON("towns.json"))
+	towns, err := loadTownsFromJSON("towns.json")
+	if err != nil {
+		log.Fatalf("failed to load towns: %v", err)
+	}
+	return NewMarketEngineWithTowns(towns)
 }
 
-func LoadTownsFromJSON(filePath string) map[string]*models.Town {
+func LoadTownsFromJSON(filePath string) (map[string]*models.Town, error) {
 	return loadTownsFromJSON(filePath)
 }
 
@@ -462,7 +467,7 @@ func (e *MarketEngine) Sell(trader *models.Trader, town *models.Town, resource m
 	}, nil
 }
 
-func (e *MarketEngine) StartTravel(trader *models.Trader, destinationTownID, equipment string) error {
+func (e *MarketEngine) StartTravel(trader *models.Trader, destinationTownID string) error {
 	if trader == nil {
 		return ErrTraderNil
 	}
@@ -483,13 +488,13 @@ func (e *MarketEngine) StartTravel(trader *models.Trader, destinationTownID, equ
 		return ErrAlreadyAtDestination
 	}
 
-	equipment = strings.ToLower(strings.TrimSpace(equipment))
-	if equipment == "" {
-		equipment = "feet"
+	travelMethod := strings.ToLower(strings.TrimSpace(trader.Equipment.Travel))
+	if travelMethod == "" {
+		travelMethod = "feet"
 	}
-	baseSpeed, ok := travelBaseSpeedByEquipment[equipment]
+	baseSpeed, ok := travelBaseSpeedByEquipment[travelMethod]
 	if !ok {
-		return ErrInvalidTravelEquipment
+		baseSpeed = travelBaseSpeedByEquipment["feet"]
 	}
 
 	weightPenalty := 1.0 + (float64(trader.Inventory.TotalWeight()) / 300.0)
@@ -509,7 +514,7 @@ func (e *MarketEngine) StartTravel(trader *models.Trader, destinationTownID, equ
 		InTransit: true,
 		FromTown:  trader.Location,
 		ToTown:    destinationTownID,
-		Method:    equipment,
+		Method:    travelMethod,
 		StartedAt: now,
 		ArrivesAt: now.Add(travelDuration),
 	}
@@ -601,42 +606,11 @@ func totalInventoryUnits(town *models.Town) int64 {
 }
 
 func initTowns() map[string]*models.Town {
-	return map[string]*models.Town{
-		"town_1": {
-			ID:         "town_1",
-			Name:       "Apeville",
-			X:          0,
-			Y:          0,
-			Inventory:  models.NewInventory(),
-			Prosperity: 120,
-			MarketMaker: models.MarketMaker{
-				Prices: map[models.ResourceID]models.MarketPrice{
-					models.ResourceWood:  {Resource: models.ResourceWood, Buy: 10, Sell: 8},
-					models.ResourceStone: {Resource: models.ResourceStone, Buy: 25, Sell: 20},
-					models.ResourceOre:   {Resource: models.ResourceOre, Buy: 40, Sell: 35},
-					models.ResourceCoal:  {Resource: models.ResourceCoal, Buy: 15, Sell: 12},
-					models.ResourceMetal: {Resource: models.ResourceMetal, Buy: 50, Sell: 45},
-				},
-				Reputation: 0,
-			},
-			Demand: map[models.ResourceID]int64{
-				models.ResourceWood:  120,
-				models.ResourceStone: 80,
-				models.ResourceOre:   60,
-				models.ResourceCoal:  90,
-				models.ResourceMetal: 40,
-			},
-			Supply: map[models.ResourceID]int64{
-				models.ResourceWood:  100,
-				models.ResourceStone: 120,
-				models.ResourceOre:   50,
-				models.ResourceCoal:  100,
-				models.ResourceMetal: 10,
-			},
-			Neighbors: []string{"town_2"},
-			UpdatedAt: time.Now(),
-		},
+	towns, err := loadTownsFromJSON("towns.json")
+	if err != nil {
+		log.Fatalf("failed to load default towns: %v", err)
 	}
+	return towns
 }
 
 type TownJSON struct {
@@ -669,16 +643,15 @@ type TownJSON struct {
 	RefinementBatchesThisCycle map[string]int64 `json:"refinement_batches_this_cycle"`
 }
 
-func loadTownsFromJSON(filePath string) map[string]*models.Town {
+func loadTownsFromJSON(filePath string) (map[string]*models.Town, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return initTowns()
+		return nil, fmt.Errorf("read towns file %q: %w", filePath, err)
 	}
 
 	var townsJSON []TownJSON
-	err = json.Unmarshal(data, &townsJSON)
-	if err != nil {
-		return initTowns()
+	if err = json.Unmarshal(data, &townsJSON); err != nil {
+		return nil, fmt.Errorf("parse towns JSON from %q: %w", filePath, err)
 	}
 
 	towns := make(map[string]*models.Town)
@@ -758,7 +731,7 @@ func loadTownsFromJSON(filePath string) map[string]*models.Town {
 		}
 	}
 
-	return towns
+	return towns, nil
 }
 
 func initTraders() map[string]*models.Trader {

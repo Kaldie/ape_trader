@@ -19,6 +19,8 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 COPY --from=builder /app/apetrader .
+COPY --from=builder /app/towns.json .
+COPY --from=builder /app/schema.sql .
 
 EXPOSE 8080
 

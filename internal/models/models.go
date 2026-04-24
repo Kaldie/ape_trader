@@ -37,7 +37,8 @@ var InitialBagCapacity = Capacity{
 }
 
 type TraderEquipment struct {
-	Bag Capacity `json:"bag"`
+	Bag    Capacity `json:"bag"`
+	Travel string   `json:"travel"`
 }
 
 // ResourceAttributes holds the physical characteristics of a resource.
@@ -231,7 +232,8 @@ func NewTrader(id, playerID, name, token, location string, balance Currency) Tra
 		Inventory:  NewInventory(),
 		Reputation: make(map[string]int64),
 		Equipment: TraderEquipment{
-			Bag: InitialBagCapacity,
+			Bag:    InitialBagCapacity,
+			Travel: "feet",
 		},
 		Travel:    TravelStatus{},
 		Token:     token,

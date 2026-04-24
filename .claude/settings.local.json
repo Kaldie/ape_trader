@@ -4,7 +4,8 @@
       "Bash(go build *)",
       "Bash(python3 -c \"import json; d=json.load\\(open\\('postman_collection.json'\\)\\); [print\\(i['name']\\) for i in d['item']]\")",
       "Bash(node -e \"const d=require\\('./postman_collection.json'\\); d.item.forEach\\(i=>console.log\\(i.name\\)\\)\")",
-      "Bash(python -c \"import json,sys; towns=json.load\\(sys.stdin\\); print\\(f'{len\\(towns\\)} towns: {[t[\\\\\"id\\\\\"] for t in towns]}'\\)\")"
+      "Bash(python -c \"import json,sys; towns=json.load\\(sys.stdin\\); print\\(f'{len\\(towns\\)} towns: {[t[\\\\\"id\\\\\"] for t in towns]}'\\)\")",
+      "Bash(python -c \"import json; towns=json.load\\(open\\('towns.json'\\)\\); [print\\(t['id'], '->', t['neighbors']\\) for t in towns]\")"
     ]
   }
 }

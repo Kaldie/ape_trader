@@ -180,7 +180,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"destination_town_id\": \"{{otherTownId}}\",\n    \"equipment\": \"feet\"\n}",
+              "raw": "{\n    \"destination_town_id\": \"{{otherTownId}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -390,37 +390,37 @@
   },
   "variable": [
     {
-      "id": "a0d9eb60-1af6-4965-b7a7-64089b206f4e",
+      "id": "fad9f130-b09d-4ae0-bf13-9d6cad4b394a",
       "key": "baseUrl",
       "value": "http://localhost:8080",
       "type": "string"
     },
     {
-      "id": "c613e43d-d541-48e1-b9a1-952b7d042f7f",
+      "id": "ec2712f7-9686-45a2-8ed8-a61676f2ca0d",
       "key": "townId",
-      "value": "town_1",
+      "value": "apeville",
       "type": "string"
     },
     {
-      "id": "ccd08b4c-6df3-4656-bdfe-6befbda51b66",
+      "id": "b4391283-ce3c-4fdd-af0c-83af40683f8b",
       "key": "otherTownId",
-      "value": "town_2",
+      "value": "stonehaven",
       "type": "string"
     },
     {
-      "id": "334985e7-0963-4d30-b0a6-134b0330ae83",
+      "id": "5b37265f-acc7-449d-8336-2a9351ec5fcb",
       "key": "player_id",
       "value": "",
       "type": "string"
     },
     {
-      "id": "5d334ca0-5cf0-40b8-bf3a-0f8fd3e5a3d2",
+      "id": "94ae9d88-069e-43cc-bd71-28bde7443a94",
       "key": "player_email",
       "value": "alice@example.com",
       "type": "string"
     },
     {
-      "id": "78e3f036-ed3d-4c7a-812c-a4446b1760be",
+      "id": "3c407292-7eb1-444c-9d99-4039ba72920b",
       "key": "trader_token",
       "value": "",
       "type": "string"
