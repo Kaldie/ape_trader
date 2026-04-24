@@ -1,4 +1,8 @@
 TODO
+[x] Separate player accounts from playable traders
+Moved gameplay state out of player records so one player can own multiple traders.
+Updated schema, persistence, API flow, and tests so location, balance, inventory, reputation, travel, and trade history belong to traders.
+
 [x] Market engine consistency and trading foundations
 Aligned models.Town.Inventory usage with internal/market/engine.go.
 Fixed seeded town/player location and reputation IDs to use town_1.
@@ -11,8 +15,8 @@ Added GET /trade/history with in-memory fallback and API documentation updates.
 
 [x] Trader persistence and trade storage
 Kept token hashing flow consistent for trader creation/auth lookup.
-Persisted DB-backed trades to players, player_inventory, town_inventory, and trade_history.
-Loaded player reputation from Postgres for DB-backed pricing.
+Persisted DB-backed trades to traders, trader_inventory, town_inventory, and trade_history.
+Loaded trader reputation from Postgres for DB-backed pricing.
 
 [x] Test coverage added
 Added engine tests for buy/sell success and failure paths.
@@ -38,7 +42,7 @@ Synced town supply with actual inventory after refinement, consumption, optional
 Ensured price calculations reflect changed availability after processing.
 
 [x] Add API failure-path tests
-Cover insufficient funds, insufficient town stock, insufficient player stock, invalid token, missing auth header, invalid bearer format, and capacity overflow.
+Cover insufficient funds, insufficient town stock, insufficient trader stock, invalid token, missing auth header, invalid bearer format, and capacity overflow.
 
 [x] Add simulation tick tests
 Cover performMinuteTick, refineResources, processConsumption, and processOptionalConsumption.
@@ -54,7 +58,7 @@ Calculate travel time based on distance, equipment (feet, cart, horses), and cur
 Implement "In Transit" state to block trading while moving.
 
 [x] start making the app stateless. Ensure all changes of the internal state are reflected into the db.
-Added DB-backed persistence for player travel state and arrival resolution.
+Added DB-backed persistence for trader travel state and arrival resolution.
 Extended schema/database loading with town X/Y coordinates and travel fields so state is recoverable from Postgres.
 
 [x] Initiate database on startup if it is not initialized yet.
@@ -74,3 +78,7 @@ Implemented local password storage using salted + peppered hash and a provider/s
 [x] Bulletin board visibility and position checks
 Ensure bulletin entries appear when requested in-town by generating a snapshot if missing/expired.
 Restrict market/town/bulletin price visibility to traders physically located in that town and validate trader position is present.
+
+[x] the trader needs equipment, it has a bag & travel-bits (<- rename) but later it will have more equipment parts. Change this in the database and ensure the model reflects this. The player model is already account-only; finish the trader equipment split next.
+Grouped trader gear under an `equipment` model with `equipment.bag` carrying capacity.
+Renamed active travel state wording from generic equipment to a travel method in code and database fields.

@@ -13,19 +13,19 @@ import (
 
 var (
 	ErrTownNil                 = errors.New("town is nil")
-	ErrPlayerNil               = errors.New("player is nil")
+	ErrTraderNil               = errors.New("trader is nil")
 	ErrInvalidQuantity         = errors.New("quantity must be greater than zero")
-	ErrPlayerNotAtTown         = errors.New("player is not at this town")
+	ErrTraderNotAtTown         = errors.New("trader is not at this town")
 	ErrResourceUnavailable     = errors.New("resource not available at this market")
 	ErrInsufficientFunds       = errors.New("insufficient funds")
 	ErrUnknownResource         = errors.New("unknown resource")
 	ErrInsufficientWeight      = errors.New("insufficient weight capacity")
 	ErrInsufficientVolume      = errors.New("insufficient volume capacity")
 	ErrInsufficientTownStock   = errors.New("insufficient town inventory")
-	ErrInsufficientPlayerStock = errors.New("insufficient player inventory")
-	ErrPlayerInTransit         = errors.New("player is in transit")
+	ErrInsufficientTraderStock = errors.New("insufficient trader inventory")
+	ErrTraderInTransit         = errors.New("trader is in transit")
 	ErrInvalidDestinationTown  = errors.New("destination town not found")
-	ErrAlreadyAtDestination    = errors.New("player already at destination town")
+	ErrAlreadyAtDestination    = errors.New("trader already at destination town")
 	ErrInvalidTravelEquipment  = errors.New("invalid travel equipment")
 )
 
@@ -47,7 +47,7 @@ var travelBaseSpeedByEquipment = map[string]float64{
 
 type MarketEngine struct {
 	Towns          map[string]*models.Town
-	Players        map[string]*models.Player
+	Traders        map[string]*models.Trader
 	BulletinBoard  *models.BulletinBoard
 	TickerStopChan chan bool
 	Recipes        map[string]models.RefineRecipe
@@ -73,7 +73,7 @@ func NewMarketEngineWithTownsAndStore(towns map[string]*models.Town, townStateSt
 
 	return &MarketEngine{
 		Towns:          towns,
-		Players:        initPlayers(),
+		Traders:        initTraders(),
 		BulletinBoard:  models.NewBulletinBoard(),
 		TickerStopChan: make(chan bool),
 		Recipes:        models.DefaultRecipes,
@@ -86,16 +86,16 @@ func (e *MarketEngine) GetTown(id string) (*models.Town, bool) {
 	return town, ok
 }
 
-func (e *MarketEngine) GetPlayer(id string) (*models.Player, bool) {
-	player, ok := e.Players[id]
+func (e *MarketEngine) GetTrader(id string) (*models.Trader, bool) {
+	trader, ok := e.Traders[id]
 	if ok {
-		e.resolveArrival(player)
+		e.resolveArrival(trader)
 	}
-	return player, ok
+	return trader, ok
 }
 
-func (e *MarketEngine) ResolveArrival(player *models.Player) bool {
-	return e.resolveArrival(player)
+func (e *MarketEngine) ResolveArrival(trader *models.Trader) bool {
+	return e.resolveArrival(trader)
 }
 
 // StartMinuteTick starts a background goroutine that runs every minute.
@@ -336,14 +336,14 @@ func (e *MarketEngine) processOptionalConsumption(town *models.Town) {
 	town.LastOptionalConsumption = time.Now()
 }
 
-func (e *MarketEngine) CurrentPrices(town *models.Town, player *models.Player) ([]models.MarketPrice, error) {
+func (e *MarketEngine) CurrentPrices(town *models.Town, trader *models.Trader) ([]models.MarketPrice, error) {
 	if town == nil {
 		return nil, ErrTownNil
 	}
 
 	var repBonus float64
-	if player != nil {
-		repBonus = float64(player.Reputation[town.ID]) / 100.0
+	if trader != nil {
+		repBonus = float64(trader.Reputation[town.ID]) / 100.0
 	}
 	repBonus = clamp(repBonus, -0.5, 0.5)
 
@@ -367,23 +367,23 @@ func (e *MarketEngine) CurrentPrices(town *models.Town, player *models.Player) (
 	return prices, nil
 }
 
-func (e *MarketEngine) Buy(player *models.Player, town *models.Town, resource models.ResourceID, quantity int64) (*TradeResult, error) {
-	if player == nil {
-		return nil, ErrPlayerNil
+func (e *MarketEngine) Buy(trader *models.Trader, town *models.Town, resource models.ResourceID, quantity int64) (*TradeResult, error) {
+	if trader == nil {
+		return nil, ErrTraderNil
 	}
 	if town == nil {
 		return nil, ErrTownNil
 	}
-	e.resolveArrival(player)
-	if player.Travel.InTransit {
-		return nil, ErrPlayerInTransit
+	e.resolveArrival(trader)
+	if trader.Travel.InTransit {
+		return nil, ErrTraderInTransit
 	}
 
 	if quantity <= 0 {
 		return nil, ErrInvalidQuantity
 	}
-	if player.Location != town.ID {
-		return nil, ErrPlayerNotAtTown
+	if trader.Location != town.ID {
+		return nil, ErrTraderNotAtTown
 	}
 	if _, ok := models.ResourceCatalog[resource]; !ok {
 		return nil, ErrUnknownResource
@@ -392,94 +392,94 @@ func (e *MarketEngine) Buy(player *models.Player, town *models.Town, resource mo
 		return nil, ErrInsufficientTownStock
 	}
 
-	price, err := e.priceForResource(town, player, resource, false)
+	price, err := e.priceForResource(town, trader, resource, false)
 	if err != nil {
 		return nil, err
 	}
 
 	totalCost := models.Currency(int64(price) * quantity)
-	if player.Balance < totalCost {
+	if trader.Balance < totalCost {
 		return nil, ErrInsufficientFunds
 	}
-	if err := validateCapacity(player, resource, quantity); err != nil {
+	if err := validateCapacity(trader, resource, quantity); err != nil {
 		return nil, err
 	}
 
-	player.Balance -= totalCost
-	player.Inventory.Add(resource, quantity)
+	trader.Balance -= totalCost
+	trader.Inventory.Add(resource, quantity)
 	town.Inventory.Remove(resource, quantity)
 	e.syncTownSupplyWithInventory(town)
 	town.UpdatedAt = time.Now()
 
 	return &TradeResult{
 		TradeValue:   totalCost,
-		NewBalance:   player.Balance,
-		NewInventory: player.Inventory.Snapshot(),
+		NewBalance:   trader.Balance,
+		NewInventory: trader.Inventory.Snapshot(),
 	}, nil
 }
 
-func (e *MarketEngine) Sell(player *models.Player, town *models.Town, resource models.ResourceID, quantity int64) (*TradeResult, error) {
-	if player == nil {
-		return nil, ErrPlayerNil
+func (e *MarketEngine) Sell(trader *models.Trader, town *models.Town, resource models.ResourceID, quantity int64) (*TradeResult, error) {
+	if trader == nil {
+		return nil, ErrTraderNil
 	}
 	if town == nil {
 		return nil, ErrTownNil
 	}
-	e.resolveArrival(player)
-	if player.Travel.InTransit {
-		return nil, ErrPlayerInTransit
+	e.resolveArrival(trader)
+	if trader.Travel.InTransit {
+		return nil, ErrTraderInTransit
 	}
 
 	if quantity <= 0 {
 		return nil, ErrInvalidQuantity
 	}
-	if player.Location != town.ID {
-		return nil, ErrPlayerNotAtTown
+	if trader.Location != town.ID {
+		return nil, ErrTraderNotAtTown
 	}
 	if _, ok := models.ResourceCatalog[resource]; !ok {
 		return nil, ErrUnknownResource
 	}
-	if player.Inventory.Quantity(resource) < quantity {
-		return nil, ErrInsufficientPlayerStock
+	if trader.Inventory.Quantity(resource) < quantity {
+		return nil, ErrInsufficientTraderStock
 	}
 
-	price, err := e.priceForResource(town, player, resource, true)
+	price, err := e.priceForResource(town, trader, resource, true)
 	if err != nil {
 		return nil, err
 	}
 
 	totalValue := models.Currency(int64(price) * quantity)
-	player.Inventory.Remove(resource, quantity)
-	player.Balance += totalValue
+	trader.Inventory.Remove(resource, quantity)
+	trader.Balance += totalValue
 	town.Inventory.Add(resource, quantity)
 	e.syncTownSupplyWithInventory(town)
 	town.UpdatedAt = time.Now()
 
 	return &TradeResult{
 		TradeValue:   totalValue,
-		NewBalance:   player.Balance,
-		NewInventory: player.Inventory.Snapshot(),
+		NewBalance:   trader.Balance,
+		NewInventory: trader.Inventory.Snapshot(),
 	}, nil
 }
 
-func (e *MarketEngine) StartTravel(player *models.Player, destinationTownID, equipment string) error {
-	if player == nil {
-		return ErrPlayerNil
+func (e *MarketEngine) StartTravel(trader *models.Trader, destinationTownID, equipment string) error {
+	if trader == nil {
+		return ErrTraderNil
 	}
-	e.resolveArrival(player)
-	if player.Travel.InTransit {
-		return ErrPlayerInTransit
+	e.resolveArrival(trader)
+	if trader.Travel.InTransit {
+		return ErrTraderInTransit
 	}
 
 	destinationTown, ok := e.Towns[destinationTownID]
 	if !ok {
 		return ErrInvalidDestinationTown
 	}
-	currentTown, ok := e.Towns[player.Location]
+	currentTown, ok := e.Towns[trader.Location]
 	if !ok {
 		return ErrTownNil
 	}
-	if player.Location == destinationTown.ID {
+	if trader.Location == destinationTown.ID {
 		return ErrAlreadyAtDestination
 	}
 
@@ -492,7 +492,7 @@ func (e *MarketEngine) StartTravel(player *models.Player, destinationTownID, equ
 		return ErrInvalidTravelEquipment
 	}
 
-	weightPenalty := 1.0 + (float64(player.Inventory.TotalWeight()) / 300.0)
+	weightPenalty := 1.0 + (float64(trader.Inventory.TotalWeight()) / 300.0)
 	distance := math.Hypot(destinationTown.X-currentTown.X, destinationTown.Y-currentTown.Y)
 	if distance < 0.1 {
 		distance = 0.1
@@ -505,31 +505,31 @@ func (e *MarketEngine) StartTravel(player *models.Player, destinationTownID, equ
 	}
 
 	now := time.Now()
-	player.Travel = models.TravelState{
+	trader.Travel = models.TravelStatus{
 		InTransit: true,
-		FromTown:  player.Location,
+		FromTown:  trader.Location,
 		ToTown:    destinationTownID,
-		Equipment: equipment,
+		Method:    equipment,
 		StartedAt: now,
 		ArrivesAt: now.Add(travelDuration),
 	}
 	return nil
 }
 
-func (e *MarketEngine) resolveArrival(player *models.Player) bool {
-	if player == nil || !player.Travel.InTransit {
+func (e *MarketEngine) resolveArrival(trader *models.Trader) bool {
+	if trader == nil || !trader.Travel.InTransit {
 		return false
 	}
-	if time.Now().Before(player.Travel.ArrivesAt) {
+	if time.Now().Before(trader.Travel.ArrivesAt) {
 		return false
 	}
-	player.Location = player.Travel.ToTown
-	player.Travel = models.TravelState{}
+	trader.Location = trader.Travel.ToTown
+	trader.Travel = models.TravelStatus{}
 	return true
 }
 
-func (e *MarketEngine) priceForResource(town *models.Town, player *models.Player, resource models.ResourceID, useBuyPrice bool) (models.Currency, error) {
-	prices, err := e.CurrentPrices(town, player)
+func (e *MarketEngine) priceForResource(town *models.Town, trader *models.Trader, resource models.ResourceID, useBuyPrice bool) (models.Currency, error) {
+	prices, err := e.CurrentPrices(town, trader)
 	if err != nil {
 		return 0, err
 	}
@@ -547,7 +547,7 @@ func (e *MarketEngine) priceForResource(town *models.Town, player *models.Player
 	return 0, ErrResourceUnavailable
 }
 
-func validateCapacity(player *models.Player, resource models.ResourceID, quantity int64) error {
+func validateCapacity(trader *models.Trader, resource models.ResourceID, quantity int64) error {
 	resourceAttrs, ok := models.ResourceCatalog[resource]
 	if !ok {
 		return ErrUnknownResource
@@ -556,13 +556,13 @@ func validateCapacity(player *models.Player, resource models.ResourceID, quantit
 	itemWeight := resourceAttrs.WeightKg * models.WeightKg(quantity)
 	itemVolume := resourceAttrs.VolumeL * models.VolumeL(quantity)
 
-	currentWeight := player.Inventory.TotalWeight()
-	currentVolume := player.Inventory.TotalVolume()
+	currentWeight := trader.Inventory.TotalWeight()
+	currentVolume := trader.Inventory.TotalVolume()
 
-	if currentWeight+itemWeight > player.Pants.MaxWeight {
+	if currentWeight+itemWeight > trader.Equipment.Bag.MaxWeight {
 		return ErrInsufficientWeight
 	}
-	if currentVolume+itemVolume > player.Pants.MaxVolume {
+	if currentVolume+itemVolume > trader.Equipment.Bag.MaxVolume {
 		return ErrInsufficientVolume
 	}
 
@@ -761,10 +761,10 @@ func loadTownsFromJSON(filePath string) map[string]*models.Town {
 	return towns
 }
 
-func initPlayers() map[string]*models.Player {
-	player := models.NewPlayer("player_1", "Ape Explorer", "town_1", 100)
-	player.Reputation["town_1"] = 15
-	return map[string]*models.Player{
-		"player_1": &player,
+func initTraders() map[string]*models.Trader {
+	trader := models.NewTrader("trader_1", "player_1", "Ape Explorer", "", "town_1", 100)
+	trader.Reputation["town_1"] = 15
+	return map[string]*models.Trader{
+		"trader_1": &trader,
 	}
 }

@@ -35,9 +35,10 @@ Tables include:
 - `towns` — town records with neighbors
 - `town_inventory` — town stock
 - `town_supply_demand` — supply, demand, and base prices
-- `players` — player records
-- `player_inventory` — player items
-- `player_reputation` — per-town reputation
+- `players` — player account records
+- `traders` — playable trader records owned by players
+- `trader_inventory` — trader items
+- `trader_reputation` — per-town trader reputation
 - `bulletin_board_entries` — price snapshots
 - `trade_history` — audit log
 

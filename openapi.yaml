@@ -28,13 +28,6 @@ paths:
           schema:
             type: string
             example: "town_1"
-        - name: player_id
-          in: query
-          required: false
-          description: Optional player ID to apply reputation modifiers to prices
-          schema:
-            type: string
-            example: "player_1"
       responses:
         '200':
           description: Market prices retrieved successfully
@@ -49,12 +42,15 @@ paths:
                   player_id:
                     type: string
                     example: "player_1"
+                  trader_id:
+                    type: string
+                    example: "trader_1"
                   prices:
                     type: array
                     items:
                       $ref: '#/components/schemas/MarketPrice'
         '404':
-          description: Town or player not found
+          description: Town or trader not found
           content:
             application/json:
               schema:
@@ -98,7 +94,7 @@ paths:
   /trade/buy:
     post:
       summary: Execute a buy trade
-      description: Purchase resources from a town. Validates player location, funds, and physics constraints (weight/volume). Requires trader authentication.
+      description: Purchase resources from a town. Validates trader location, funds, and physics constraints (weight/volume). Requires trader authentication.
       operationId: buyTrade
       security:
         - bearerAuth: []
@@ -122,7 +118,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Player or town not found
+          description: Trader or town not found
           content:
             application/json:
               schema:
@@ -162,7 +158,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Town or player not found
+          description: Town or trader not found
           content:
             application/json:
               schema:
@@ -177,7 +173,7 @@ paths:
   /trade/history:
     get:
       summary: Retrieve trade history
-      description: Returns recent buy and sell trades for the authenticated trader's player.
+      description: Returns recent buy and sell trades for the authenticated trader.
       operationId: getTradeHistory
       security:
         - bearerAuth: []
@@ -204,7 +200,7 @@ paths:
   /trade/sell:
     post:
       summary: Execute a sell trade
-      description: Sell resources to a town. Validates player location and inventory ownership. Requires trader authentication.
+      description: Sell resources to a town. Validates trader location and inventory ownership. Requires trader authentication.
       operationId: sellTrade
       security:
         - bearerAuth: []
@@ -228,7 +224,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: Player or town not found
+          description: Trader or town not found
           content:
             application/json:
               schema:
@@ -301,19 +297,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Player not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
 components:
   schemas:
     MarketPrice:
@@ -440,11 +423,11 @@ components:
         new_balance:
           type: integer
           format: int64
-          description: Player's balance after trade (in @)
+          description: Trader's balance after trade (in @)
           example: 50
         new_inventory:
           type: object
-          description: Player's updated inventory quantities
+          description: Trader's updated inventory quantities
           additionalProperties:
             type: integer
             format: int64
@@ -458,6 +441,7 @@ components:
     TradeHistoryEntry:
       type: object
       required:
+        - trader_id
         - player_id
         - town_id
         - resource_id
@@ -470,6 +454,8 @@ components:
         id:
           type: integer
           format: int64
+        trader_id:
+          type: string
         player_id:
           type: string
         town_id:
@@ -667,6 +653,8 @@ components:
         - id
         - player_id
         - name
+        - location
+        - balance
         - created_at
         - updated_at
       properties:
@@ -682,6 +670,15 @@ components:
           type: string
           description: Display name for the trader
           example: "Wood Trader Bot"
+        location:
+          type: string
+          description: Current town occupied by this trader
+          example: "town_1"
+        balance:
+          type: integer
+          format: int64
+          description: Trader cash balance
+          example: 100
         created_at:
           type: string
           format: date-time
@@ -721,8 +718,6 @@ components:
         - id
         - name
         - email
-        - location
-        - balance
         - identity_provider
       properties:
         id:
@@ -735,13 +730,6 @@ components:
           type: string
           format: email
           example: "alice@example.com"
-        location:
-          type: string
-          example: "town_1"
-        balance:
-          type: integer
-          format: int64
-          example: 100
         identity_provider:
           type: string
           example: "local"
@@ -768,7 +756,7 @@ components:
       properties:
         error:
           type: string
-          example: "Player not found"
+          example: "Trader not found"
 
 security:
   - bearerAuth: []

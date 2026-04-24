@@ -13,11 +13,11 @@ import (
 
 func setupTestServer() (*Server, *market.MarketEngine) {
 	engine := market.NewMarketEngine()
-	player := engine.Players["player_1"]
-	player.Location = "town_1"
-	player.Balance = 100
-	player.Inventory = models.NewInventory()
-	player.Reputation = map[string]int64{}
+	trader := engine.Traders["trader_1"]
+	trader.Location = "town_1"
+	trader.Balance = 100
+	trader.Inventory = models.NewInventory()
+	trader.Reputation = map[string]int64{}
 
 	town := engine.Towns["town_1"]
 	town.Inventory = models.NewInventory()
@@ -25,7 +25,9 @@ func setupTestServer() (*Server, *market.MarketEngine) {
 	town.Demand[models.ResourceWood] = 10
 	town.Supply[models.ResourceWood] = 10
 
-	return NewServer(engine, nil), engine
+	server := NewServer(engine, nil)
+	server.inMemoryPlayers["player_1"] = &models.Player{ID: "player_1", Name: "Default Player"}
+	return server, engine
 }
 
 func performJSONRequest(t *testing.T, router http.Handler, method, path string, body any, token string) *httptest.ResponseRecorder {
@@ -53,21 +55,13 @@ func performJSONRequest(t *testing.T, router http.Handler, method, path string, 
 
 func createTraderToken(t *testing.T, server *Server) string {
 	t.Helper()
-	createResp := performJSONRequest(t, server.router, http.MethodPost, "/traders", CreateTraderRequest{
-		PlayerID: "player_1",
-		Name:     "Test Trader",
-	}, "")
-	if createResp.Code != http.StatusCreated {
-		t.Fatalf("expected trader creation status 201, got %d: %s", createResp.Code, createResp.Body.String())
+	trader := server.engine.Traders["trader_1"]
+	if trader == nil {
+		t.Fatal("expected seeded trader_1 to exist")
 	}
-	var created CreateTraderResponse
-	if err := json.Unmarshal(createResp.Body.Bytes(), &created); err != nil {
-		t.Fatalf("unmarshal create trader response: %v", err)
-	}
-	if created.Token == "" {
-		t.Fatal("expected token in create trader response")
-	}
-	return created.Token
+	token := generateTraderToken()
+	server.storeInMemoryTrader(hashToken(token), trader)
+	return token
 }
 
 func TestRegisterPlayerSuccessAndCanCreateTrader(t *testing.T) {
@@ -152,8 +146,8 @@ func TestTraderCanBuyAndSellWithoutDatabase(t *testing.T) {
 		t.Fatalf("expected buy status 200, got %d: %s", buyResp.Code, buyResp.Body.String())
 	}
 
-	if got := engine.Players["player_1"].Inventory.Quantity(models.ResourceWood); got != 2 {
-		t.Fatalf("expected player wood 2 after buy, got %d", got)
+	if got := engine.Traders[created.Trader.ID].Inventory.Quantity(models.ResourceWood); got != 2 {
+		t.Fatalf("expected trader wood 2 after buy, got %d", got)
 	}
 
 	sellResp := performJSONRequest(t, server.router, http.MethodPost, "/trade/sell", TradeRequest{
@@ -165,10 +159,10 @@ func TestTraderCanBuyAndSellWithoutDatabase(t *testing.T) {
 		t.Fatalf("expected sell status 200, got %d: %s", sellResp.Code, sellResp.Body.String())
 	}
 
-	if got := engine.Players["player_1"].Inventory.Quantity(models.ResourceWood); got != 1 {
-		t.Fatalf("expected player wood 1 after sell, got %d", got)
+	if got := engine.Traders[created.Trader.ID].Inventory.Quantity(models.ResourceWood); got != 1 {
+		t.Fatalf("expected trader wood 1 after sell, got %d", got)
 	}
-	if got := engine.Players["player_1"].Balance; got != 97 {
+	if got := engine.Traders[created.Trader.ID].Balance; got != 97 {
 		t.Fatalf("expected balance 97 after buy then sell, got %d", got)
 	}
 
@@ -252,10 +246,10 @@ func TestGetTownReturnsTownDetails(t *testing.T) {
 func TestTradeFailurePaths(t *testing.T) {
 	server, engine := setupTestServer()
 	token := createTraderToken(t, server)
-	player := engine.Players["player_1"]
+	trader := engine.Traders["trader_1"]
 	town := engine.Towns["town_1"]
 
-	player.Balance = 1
+	trader.Balance = 1
 	resp := performJSONRequest(t, server.router, http.MethodPost, "/trade/buy", TradeRequest{
 		TownID:   "town_1",
 		Resource: models.ResourceWood,
@@ -265,7 +259,7 @@ func TestTradeFailurePaths(t *testing.T) {
 		t.Fatalf("expected insufficient funds status 400, got %d: %s", resp.Code, resp.Body.String())
 	}
 
-	player.Balance = 1000
+	trader.Balance = 1000
 	town.Inventory = models.NewInventory()
 	town.Inventory.Add(models.ResourceWood, 1)
 	resp = performJSONRequest(t, server.router, http.MethodPost, "/trade/buy", TradeRequest{
@@ -279,7 +273,7 @@ func TestTradeFailurePaths(t *testing.T) {
 
 	town.Inventory = models.NewInventory()
 	town.Inventory.Add(models.ResourceWood, 100)
-	player.Pants.MaxWeight = 10
+	trader.Equipment.Bag.MaxWeight = 10
 	resp = performJSONRequest(t, server.router, http.MethodPost, "/trade/buy", TradeRequest{
 		TownID:   "town_1",
 		Resource: models.ResourceWood,
@@ -289,15 +283,15 @@ func TestTradeFailurePaths(t *testing.T) {
 		t.Fatalf("expected capacity overflow status 400, got %d: %s", resp.Code, resp.Body.String())
 	}
 
-	player.Pants = models.InitialPantsCapacity
-	player.Inventory = models.NewInventory()
+	trader.Equipment.Bag = models.InitialBagCapacity
+	trader.Inventory = models.NewInventory()
 	resp = performJSONRequest(t, server.router, http.MethodPost, "/trade/sell", TradeRequest{
 		TownID:   "town_1",
 		Resource: models.ResourceWood,
 		Quantity: 1,
 	}, token)
 	if resp.Code != http.StatusBadRequest {
-		t.Fatalf("expected insufficient player stock status 400, got %d: %s", resp.Code, resp.Body.String())
+		t.Fatalf("expected insufficient trader stock status 400, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -346,7 +340,7 @@ func TestTravelBlocksTradingAndStatusWorks(t *testing.T) {
 
 	startResp := performJSONRequest(t, server.router, http.MethodPost, "/travel/start", TravelRequest{
 		DestinationTownID: "town_2",
-		Equipment:         "feet",
+		Method:            "feet",
 	}, token)
 	if startResp.Code != http.StatusOK {
 		t.Fatalf("expected travel start status 200, got %d: %s", startResp.Code, startResp.Body.String())
@@ -361,8 +355,8 @@ func TestTravelBlocksTradingAndStatusWorks(t *testing.T) {
 		t.Fatalf("expected in-transit buy block status 400, got %d: %s", buyResp.Code, buyResp.Body.String())
 	}
 
-	player := engine.Players["player_1"]
-	player.Travel.ArrivesAt = time.Now().Add(-time.Minute)
+	trader := engine.Traders["trader_1"]
+	trader.Travel.ArrivesAt = time.Now().Add(-time.Minute)
 	statusResp := performJSONRequest(t, server.router, http.MethodGet, "/travel/status", nil, token)
 	if statusResp.Code != http.StatusOK {
 		t.Fatalf("expected travel status 200, got %d: %s", statusResp.Code, statusResp.Body.String())
@@ -418,7 +412,7 @@ func TestPriceVisibilityRequiresKnownPlayerLocation(t *testing.T) {
 	server, engine := setupTestServer()
 	token := createTraderToken(t, server)
 
-	engine.Players["player_1"].Location = ""
+	engine.Traders["trader_1"].Location = ""
 	resp := performJSONRequest(t, server.router, http.MethodGet, "/market/town_1", nil, token)
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("expected missing position status 400, got %d: %s", resp.Code, resp.Body.String())

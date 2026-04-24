@@ -25,7 +25,7 @@ func testEngine() *MarketEngine {
 	townInventory := models.NewInventory()
 	townInventory.Add(models.ResourceWood, 10)
 
-	player := models.NewPlayer("player_1", "Test Player", "town_1", 100)
+	trader := models.NewTrader("trader_1", "player_1", "Test Trader", "", "town_1", 100)
 
 	return &MarketEngine{
 		Towns: map[string]*models.Town{
@@ -50,8 +50,8 @@ func testEngine() *MarketEngine {
 				},
 			},
 		},
-		Players: map[string]*models.Player{
-			"player_1": &player,
+		Traders: map[string]*models.Trader{
+			"trader_1": &trader,
 		},
 		BulletinBoard:  models.NewBulletinBoard(),
 		TickerStopChan: make(chan bool),
@@ -61,10 +61,10 @@ func testEngine() *MarketEngine {
 
 func TestBuySuccess(t *testing.T) {
 	engine := testEngine()
-	player := engine.Players["player_1"]
+	trader := engine.Traders["trader_1"]
 	town := engine.Towns["town_1"]
 
-	result, err := engine.Buy(player, town, models.ResourceWood, 2)
+	result, err := engine.Buy(trader, town, models.ResourceWood, 2)
 	if err != nil {
 		t.Fatalf("Buy returned error: %v", err)
 	}
@@ -72,8 +72,8 @@ func TestBuySuccess(t *testing.T) {
 	if result.NewBalance != 84 {
 		t.Fatalf("expected balance 84, got %d", result.NewBalance)
 	}
-	if got := player.Inventory.Quantity(models.ResourceWood); got != 2 {
-		t.Fatalf("expected player wood 2, got %d", got)
+	if got := trader.Inventory.Quantity(models.ResourceWood); got != 2 {
+		t.Fatalf("expected trader wood 2, got %d", got)
 	}
 	if got := town.Inventory.Quantity(models.ResourceWood); got != 8 {
 		t.Fatalf("expected town wood 8, got %d", got)
@@ -82,10 +82,10 @@ func TestBuySuccess(t *testing.T) {
 
 func TestBuyRejectsInsufficientTownInventory(t *testing.T) {
 	engine := testEngine()
-	player := engine.Players["player_1"]
+	trader := engine.Traders["trader_1"]
 	town := engine.Towns["town_1"]
 
-	_, err := engine.Buy(player, town, models.ResourceWood, 11)
+	_, err := engine.Buy(trader, town, models.ResourceWood, 11)
 	if err != ErrInsufficientTownStock {
 		t.Fatalf("expected ErrInsufficientTownStock, got %v", err)
 	}
@@ -93,11 +93,11 @@ func TestBuyRejectsInsufficientTownInventory(t *testing.T) {
 
 func TestSellSuccess(t *testing.T) {
 	engine := testEngine()
-	player := engine.Players["player_1"]
+	trader := engine.Traders["trader_1"]
 	town := engine.Towns["town_1"]
-	player.Inventory.Add(models.ResourceWood, 3)
+	trader.Inventory.Add(models.ResourceWood, 3)
 
-	result, err := engine.Sell(player, town, models.ResourceWood, 2)
+	result, err := engine.Sell(trader, town, models.ResourceWood, 2)
 	if err != nil {
 		t.Fatalf("Sell returned error: %v", err)
 	}
@@ -105,8 +105,8 @@ func TestSellSuccess(t *testing.T) {
 	if result.NewBalance != 120 {
 		t.Fatalf("expected balance 120, got %d", result.NewBalance)
 	}
-	if got := player.Inventory.Quantity(models.ResourceWood); got != 1 {
-		t.Fatalf("expected player wood 1, got %d", got)
+	if got := trader.Inventory.Quantity(models.ResourceWood); got != 1 {
+		t.Fatalf("expected trader wood 1, got %d", got)
 	}
 	if got := town.Inventory.Quantity(models.ResourceWood); got != 12 {
 		t.Fatalf("expected town wood 12, got %d", got)
@@ -115,12 +115,12 @@ func TestSellSuccess(t *testing.T) {
 
 func TestSellRejectsInsufficientPlayerInventory(t *testing.T) {
 	engine := testEngine()
-	player := engine.Players["player_1"]
+	trader := engine.Traders["trader_1"]
 	town := engine.Towns["town_1"]
 
-	_, err := engine.Sell(player, town, models.ResourceWood, 1)
-	if err != ErrInsufficientPlayerStock {
-		t.Fatalf("expected ErrInsufficientPlayerStock, got %v", err)
+	_, err := engine.Sell(trader, town, models.ResourceWood, 1)
+	if err != ErrInsufficientTraderStock {
+		t.Fatalf("expected ErrInsufficientTraderStock, got %v", err)
 	}
 }
 
@@ -406,22 +406,22 @@ func TestStartTravelAndArrivalResolution(t *testing.T) {
 		"town_1": {ID: "town_1", Name: "Start", X: 0, Y: 0, Inventory: models.NewInventory(), MarketMaker: models.MarketMaker{Prices: map[models.ResourceID]models.MarketPrice{}}, Demand: map[models.ResourceID]int64{}, Supply: map[models.ResourceID]int64{}},
 		"town_2": {ID: "town_2", Name: "End", X: 10, Y: 0, Inventory: models.NewInventory(), MarketMaker: models.MarketMaker{Prices: map[models.ResourceID]models.MarketPrice{}}, Demand: map[models.ResourceID]int64{}, Supply: map[models.ResourceID]int64{}},
 	})
-	player := engine.Players["player_1"]
-	player.Location = "town_1"
+	trader := engine.Traders["trader_1"]
+	trader.Location = "town_1"
 
-	if err := engine.StartTravel(player, "town_2", "horse"); err != nil {
+	if err := engine.StartTravel(trader, "town_2", "horse"); err != nil {
 		t.Fatalf("StartTravel returned error: %v", err)
 	}
-	if !player.Travel.InTransit {
-		t.Fatal("expected player to be in transit")
+	if !trader.Travel.InTransit {
+		t.Fatal("expected trader to be in transit")
 	}
 
-	player.Travel.ArrivesAt = time.Now().Add(-time.Second)
-	engine.resolveArrival(player)
-	if player.Travel.InTransit {
+	trader.Travel.ArrivesAt = time.Now().Add(-time.Second)
+	engine.resolveArrival(trader)
+	if trader.Travel.InTransit {
 		t.Fatal("expected transit to resolve after arrival time")
 	}
-	if player.Location != "town_2" {
-		t.Fatalf("expected player location town_2 after arrival, got %s", player.Location)
+	if trader.Location != "town_2" {
+		t.Fatalf("expected trader location town_2 after arrival, got %s", trader.Location)
 	}
 }

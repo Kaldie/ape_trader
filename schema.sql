@@ -71,19 +71,8 @@ CREATE TABLE town_supply_demand (
 CREATE TABLE players (
     id VARCHAR(100) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    location VARCHAR(100) NOT NULL,
-    balance BIGINT NOT NULL DEFAULT 100,
-    pants_max_weight INT NOT NULL DEFAULT 50,
-    pants_max_volume INT NOT NULL DEFAULT 40,
-    travel_in_transit BOOLEAN NOT NULL DEFAULT FALSE,
-    travel_from_town VARCHAR(100),
-    travel_to_town VARCHAR(100),
-    travel_equipment VARCHAR(20),
-    travel_started_at TIMESTAMP,
-    travel_arrives_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (location) REFERENCES towns(id) ON DELETE RESTRICT
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Player identities (local credentials now, extensible to external IdP subjects later)
@@ -100,29 +89,51 @@ CREATE TABLE player_identities (
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
 );
 
--- Player inventory
-CREATE TABLE player_inventory (
-    id SERIAL PRIMARY KEY,
+-- Traders (playable trading units owned by a player account)
+CREATE TABLE traders (
+    id VARCHAR(100) PRIMARY KEY,
     player_id VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    location VARCHAR(100) NOT NULL,
+    balance BIGINT NOT NULL DEFAULT 100,
+    bag_max_weight INT NOT NULL DEFAULT 50,
+    bag_max_volume INT NOT NULL DEFAULT 40,
+    travel_in_transit BOOLEAN NOT NULL DEFAULT FALSE,
+    travel_from_town VARCHAR(100),
+    travel_to_town VARCHAR(100),
+    travel_method VARCHAR(20),
+    travel_started_at TIMESTAMP,
+    travel_arrives_at TIMESTAMP,
+    token_hash VARCHAR(255) NOT NULL UNIQUE, -- Hashed token for security
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+    FOREIGN KEY (location) REFERENCES towns(id) ON DELETE RESTRICT
+);
+
+-- Trader inventory
+CREATE TABLE trader_inventory (
+    id SERIAL PRIMARY KEY,
+    trader_id VARCHAR(100) NOT NULL,
     resource_id VARCHAR(50) NOT NULL,
     quantity BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(player_id, resource_id),
-    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+    UNIQUE(trader_id, resource_id),
+    FOREIGN KEY (trader_id) REFERENCES traders(id) ON DELETE CASCADE,
     FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
 );
 
--- Player reputation by town
-CREATE TABLE player_reputation (
+-- Trader reputation by town
+CREATE TABLE trader_reputation (
     id SERIAL PRIMARY KEY,
-    player_id VARCHAR(100) NOT NULL,
+    trader_id VARCHAR(100) NOT NULL,
     town_id VARCHAR(100) NOT NULL,
     reputation BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(player_id, town_id),
-    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+    UNIQUE(trader_id, town_id),
+    FOREIGN KEY (trader_id) REFERENCES traders(id) ON DELETE CASCADE,
     FOREIGN KEY (town_id) REFERENCES towns(id) ON DELETE CASCADE
 );
 
@@ -163,6 +174,7 @@ CREATE TABLE bulletin_board_amounts (
 -- Trade history (audit log)
 CREATE TABLE trade_history (
     id SERIAL PRIMARY KEY,
+    trader_id VARCHAR(100) NOT NULL,
     player_id VARCHAR(100) NOT NULL,
     town_id VARCHAR(100) NOT NULL,
     resource_id VARCHAR(50) NOT NULL,
@@ -171,31 +183,22 @@ CREATE TABLE trade_history (
     total_cost BIGINT NOT NULL,
     trade_type VARCHAR(10) NOT NULL, -- 'buy' or 'sell'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trader_id) REFERENCES traders(id) ON DELETE CASCADE,
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
     FOREIGN KEY (town_id) REFERENCES towns(id) ON DELETE CASCADE,
     FOREIGN KEY (resource_id) REFERENCES resources(id) ON DELETE CASCADE
 );
 
--- Traders (AI trading agents)
-CREATE TABLE traders (
-    id VARCHAR(100) PRIMARY KEY,
-    player_id VARCHAR(100) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    token_hash VARCHAR(255) NOT NULL UNIQUE, -- Hashed token for security
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
-);
-
 -- Indexes for performance
-CREATE INDEX idx_player_location ON players(location);
 CREATE INDEX idx_player_identities_player ON player_identities(player_id);
-CREATE INDEX idx_player_inventory_player ON player_inventory(player_id);
-CREATE INDEX idx_player_inventory_resource ON player_inventory(resource_id);
+CREATE INDEX idx_trader_location ON traders(location);
+CREATE INDEX idx_trader_inventory_trader ON trader_inventory(trader_id);
+CREATE INDEX idx_trader_inventory_resource ON trader_inventory(resource_id);
 CREATE INDEX idx_town_inventory_town ON town_inventory(town_id);
 CREATE INDEX idx_town_inventory_resource ON town_inventory(resource_id);
-CREATE INDEX idx_player_reputation_player ON player_reputation(player_id);
-CREATE INDEX idx_player_reputation_town ON player_reputation(town_id);
+CREATE INDEX idx_trader_reputation_trader ON trader_reputation(trader_id);
+CREATE INDEX idx_trader_reputation_town ON trader_reputation(town_id);
+CREATE INDEX idx_trade_history_trader ON trade_history(trader_id);
 CREATE INDEX idx_trade_history_player ON trade_history(player_id);
 CREATE INDEX idx_trade_history_town ON trade_history(town_id);
 CREATE INDEX idx_trade_history_created ON trade_history(created_at);

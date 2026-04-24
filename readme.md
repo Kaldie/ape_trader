@@ -5,13 +5,13 @@ This README is designed to give an AI Agent (like Cursor, GitHub Copilot, or a c
 # README.md: ApeTrader API
 
 ## Project Overview
-ApeTrader is an **API-first, multiplayer economic simulation game**. Players start as low-level traders with nothing but the clothes on their backs (literally, their "pants" act as their first inventory) and 100 Apes (`@`), the local currency. The goal is to exploit price disparities between towns, navigate deep supply chains, and build reputation across a region of interconnected town economies.
+ApeTrader is an **API-first, multiplayer economic simulation game**. Player accounts own one or more traders, and those traders start with basic equipment, a small bag, and 100 Apes (`@`), the local currency. The goal is to exploit price disparities between towns, navigate deep supply chains, and build reputation across a region of interconnected town economies.
 
 ## Core Game Mechanics
 * **The Economy:** Tick-based (1-minute intervals). Every tick, towns consume resources, refiners process goods (e.g., Ore + Coal → Iron), and Market Makers update prices based on supply/demand.
 * **Information "Fog of War":** Towns have bulletin boards showing prices of neighboring towns, but this data is a "snapshot" and becomes stale over time.
-* **The "Pants" Inventory System:** Movement is restricted by two physical constraints: **Weight** and **Volume**. Players must manage both.
-* **Reputation:** NPC Market Makers offer better buy/sell spreads to players with higher local reputation.
+* **The Bag Capacity System:** Movement is restricted by two physical constraints: **Weight** and **Volume**. Traders must manage both.
+* **Reputation:** NPC Market Makers offer better buy/sell spreads to traders with higher local reputation.
 * **API-First:** The backend is a pure Go-based JSON API. A Web Front-end will be built later.
 
 ## Technical Stack
@@ -39,7 +39,7 @@ Current endpoints:
 - `GET /market/{town_id}` — Real-time market prices with optional reputation bonuses
 - `GET /town/{town_id}` — Authenticated town details including inventory, production, and consumption
 - `GET /bulletin/{town_id}` — Stale price snapshots (updated once per minute tick, expire after 24 hours)
-- `GET /trade/history` — Authenticated trade audit trail for the trader's player
+- `GET /trade/history` — Authenticated trade audit trail for the trader
 - `POST /trade/buy` — Execute purchases with validation (location, funds, physics)
 - `POST /trade/sell` — Execute sales with validation (location, inventory)
 
@@ -113,8 +113,8 @@ Tip:
 ## AI Agent Coding Instructions
 When generating code for this project, follow these rules:
 1.  **Strict Typing:** Use Go's strong typing. No `interface{}` unless absolutely necessary.
-2.  **Concurrency Safety:** Ensure town inventories and player balances are protected by Mutexes or handled via channels during the "Minute Tick."
-3.  **Validation:** Every trade must validate location (is the player there?), funds (can they afford it?), and physics (does it fit in their pants/bag?).
+2.  **Concurrency Safety:** Ensure town inventories and trader balances are protected by Mutexes or handled via channels during the "Minute Tick."
+3.  **Validation:** Every trade must validate location (is the trader there?), funds (can they afford it?), and physics (does it fit in their bag?).
 4.  **Modular Design:** Separate the `MarketLogic`, `TickEngine`, and `APIHandlers` into different packages.
 
 ## First Milestone: "The Humble Beginning"
@@ -133,4 +133,4 @@ When generating code for this project, follow these rules:
 | Stone | 20 | 8 |
 | Ore | 30 | 5 |
 | Coal | 10 | 10 |
-| **Initial Pants Capacity** | **50kg** | **40L** |
+| **Initial Bag Capacity** | **50kg** | **40L** |

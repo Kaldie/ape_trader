@@ -31,9 +31,13 @@ type Capacity struct {
 	MaxVolume VolumeL  `json:"max_volume_l"`
 }
 
-var InitialPantsCapacity = Capacity{
+var InitialBagCapacity = Capacity{
 	MaxWeight: 50,
 	MaxVolume: 40,
+}
+
+type TraderEquipment struct {
+	Bag Capacity `json:"bag"`
 }
 
 // ResourceAttributes holds the physical characteristics of a resource.
@@ -178,56 +182,58 @@ type TownOptionalConsumption struct {
 	Optional               map[ResourceID]int64 `json:"optional"`
 }
 
-// Player represents a game participant with funds, inventory and location.
+// Player represents the account owner who can control multiple traders.
 type Player struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type TravelStatus struct {
+	InTransit bool      `json:"in_transit"`
+	FromTown  string    `json:"from_town,omitempty"`
+	ToTown    string    `json:"to_town,omitempty"`
+	Method    string    `json:"method,omitempty"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+	ArrivesAt time.Time `json:"arrives_at,omitempty"`
+}
+
+func NewPlayer(id, name string) Player {
+	return Player{
+		ID:   id,
+		Name: name,
+	}
+}
+
+// Trader represents a playable trading unit owned by a player account.
+type Trader struct {
 	ID         string           `json:"id"`
+	PlayerID   string           `json:"player_id"`
 	Name       string           `json:"name"`
 	Location   string           `json:"location"`
 	Balance    Currency         `json:"balance"`
 	Inventory  Inventory        `json:"inventory"`
 	Reputation map[string]int64 `json:"reputation"`
-	Pants      Capacity         `json:"pants_capacity"`
-	Travel     TravelState      `json:"travel"`
+	Equipment  TraderEquipment  `json:"equipment"`
+	Travel     TravelStatus     `json:"travel"`
+	Token      string           `json:"-"` // Bearer token, not exposed in JSON
+	CreatedAt  time.Time        `json:"created_at"`
+	UpdatedAt  time.Time        `json:"updated_at"`
 }
 
-type TravelState struct {
-	InTransit bool      `json:"in_transit"`
-	FromTown  string    `json:"from_town,omitempty"`
-	ToTown    string    `json:"to_town,omitempty"`
-	Equipment string    `json:"equipment,omitempty"`
-	StartedAt time.Time `json:"started_at,omitempty"`
-	ArrivesAt time.Time `json:"arrives_at,omitempty"`
-}
-
-func NewPlayer(id, name, location string, balance Currency) Player {
-	return Player{
+func NewTrader(id, playerID, name, token, location string, balance Currency) Trader {
+	now := time.Now()
+	return Trader{
 		ID:         id,
+		PlayerID:   playerID,
 		Name:       name,
 		Location:   location,
 		Balance:    balance,
 		Inventory:  NewInventory(),
 		Reputation: make(map[string]int64),
-		Pants:      InitialPantsCapacity,
-		Travel:     TravelState{},
-	}
-}
-
-// Trader represents an AI trading agent that can execute trades on behalf of a player.
-type Trader struct {
-	ID        string    `json:"id"`
-	PlayerID  string    `json:"player_id"`
-	Name      string    `json:"name"`
-	Token     string    `json:"-"` // Bearer token, not exposed in JSON
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-func NewTrader(id, playerID, name, token string) Trader {
-	now := time.Now()
-	return Trader{
-		ID:        id,
-		PlayerID:  playerID,
-		Name:      name,
+		Equipment: TraderEquipment{
+			Bag: InitialBagCapacity,
+		},
+		Travel:    TravelStatus{},
 		Token:     token,
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -236,6 +242,7 @@ func NewTrader(id, playerID, name, token string) Trader {
 
 type TradeHistoryEntry struct {
 	ID           int64      `json:"id"`
+	TraderID     string     `json:"trader_id"`
 	PlayerID     string     `json:"player_id"`
 	TownID       string     `json:"town_id"`
 	ResourceID   ResourceID `json:"resource_id"`

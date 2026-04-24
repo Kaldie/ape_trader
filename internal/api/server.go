@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"net/mail"
 	"os"
@@ -59,12 +60,10 @@ type RegisterPlayerResponse struct {
 }
 
 type RegisteredPlayer struct {
-	ID               string          `json:"id"`
-	Name             string          `json:"name"`
-	Email            string          `json:"email"`
-	Location         string          `json:"location"`
-	Balance          models.Currency `json:"balance"`
-	IdentityProvider string          `json:"identity_provider"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Email            string `json:"email"`
+	IdentityProvider string `json:"identity_provider"`
 }
 
 type TradeHistoryResponse struct {
@@ -75,21 +74,41 @@ type TradeHistoryResponse struct {
 
 type TravelRequest struct {
 	DestinationTownID string `json:"destination_town_id" binding:"required"`
-	Equipment         string `json:"equipment"`
+	Method            string `json:"method"`
 }
 
 type TravelResponse struct {
-	Success  bool                `json:"success"`
-	Message  string              `json:"message,omitempty"`
-	PlayerID string              `json:"player_id,omitempty"`
-	Location string              `json:"location,omitempty"`
-	Travel   *models.TravelState `json:"travel,omitempty"`
+	Success  bool                 `json:"success"`
+	Message  string               `json:"message,omitempty"`
+	TraderID string               `json:"trader_id,omitempty"`
+	Location string               `json:"location,omitempty"`
+	Travel   *models.TravelStatus `json:"travel,omitempty"`
 }
 
 type TownResponse struct {
 	Success bool           `json:"success"`
 	Message string         `json:"message,omitempty"`
 	Town    *TownViewModel `json:"town,omitempty"`
+}
+
+type TownNode struct {
+	ID   string  `json:"id"`
+	Name string  `json:"name"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+
+type TownConnection struct {
+	From     string  `json:"from"`
+	To       string  `json:"to"`
+	Distance float64 `json:"distance"`
+}
+
+type TownConnectionsResponse struct {
+	Success     bool             `json:"success"`
+	Towns       []TownNode       `json:"towns"`
+	Neighbors   []TownNode       `json:"neighbors"`
+	Connections []TownConnection `json:"connections"`
 }
 
 type TownViewModel struct {
@@ -109,6 +128,7 @@ type Server struct {
 	engine             *market.MarketEngine
 	router             *gin.Engine
 	db                 *db.Database
+	inMemoryPlayers    map[string]*models.Player
 	inMemoryTraders    map[string]*models.Trader
 	inMemoryHistory    map[string][]models.TradeHistoryEntry
 	inMemoryIdentities map[string]localIdentity
@@ -136,6 +156,7 @@ func NewServer(engine *market.MarketEngine, database *db.Database) *Server {
 		engine:             engine,
 		router:             r,
 		db:                 database,
+		inMemoryPlayers:    make(map[string]*models.Player),
 		inMemoryTraders:    make(map[string]*models.Trader),
 		inMemoryHistory:    make(map[string][]models.TradeHistoryEntry),
 		inMemoryIdentities: make(map[string]localIdentity),
@@ -156,6 +177,7 @@ func (s *Server) registerRoutes() {
 	{
 		authorized.GET("/market/:town_id", s.handleGetMarket)
 		authorized.GET("/town/:town_id", s.handleGetTown)
+		authorized.GET("/towns/connections", s.handleGetTownConnections)
 		authorized.GET("/bulletin/:town_id", s.handleGetBulletin)
 		authorized.GET("/trade/history", s.handleGetTradeHistory)
 		authorized.GET("/travel/status", s.handleTravelStatus)
@@ -178,15 +200,15 @@ func (s *Server) handleGetMarket(c *gin.Context) {
 		return
 	}
 
-	trader, player, ok := s.authenticatedTraderAndPlayer(c)
+	trader, actor, ok := s.authenticatedTraderAndActor(c)
 	if !ok {
 		return
 	}
-	if !s.ensurePlayerPositionForTown(c, player, townID) {
+	if !s.ensureTraderPositionForTown(c, actor, townID) {
 		return
 	}
 
-	prices, err := s.engine.CurrentPrices(town, player)
+	prices, err := s.engine.CurrentPrices(town, actor)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -195,6 +217,7 @@ func (s *Server) handleGetMarket(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"town_id":   town.ID,
 		"player_id": trader.PlayerID,
+		"trader_id": trader.ID,
 		"prices":    prices,
 	})
 }
@@ -206,11 +229,11 @@ func (s *Server) handleGetBulletin(c *gin.Context) {
 		return
 	}
 
-	_, player, ok := s.authenticatedTraderAndPlayer(c)
+	_, actor, ok := s.authenticatedTraderAndActor(c)
 	if !ok {
 		return
 	}
-	if !s.ensurePlayerPositionForTown(c, player, townID) {
+	if !s.ensureTraderPositionForTown(c, actor, townID) {
 		return
 	}
 
@@ -234,6 +257,57 @@ func (s *Server) handleGetBulletin(c *gin.Context) {
 	c.JSON(http.StatusOK, entry)
 }
 
+func (s *Server) handleGetTownConnections(c *gin.Context) {
+	_, actor, ok := s.authenticatedTraderAndActor(c)
+	if !ok {
+		return
+	}
+
+	if actor.Travel.InTransit {
+		c.JSON(http.StatusForbidden, gin.H{"error": "trader is in transit"})
+		return
+	}
+
+	currentTown, ok := s.engine.GetTown(actor.Location)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "trader location not found"})
+		return
+	}
+
+	var neighbors []TownNode
+	var connections []TownConnection
+
+	for _, neighborID := range currentTown.Neighbors {
+		neighbor, ok := s.engine.Towns[neighborID]
+		if !ok {
+			continue
+		}
+		neighbors = append(neighbors, TownNode{
+			ID:   neighbor.ID,
+			Name: neighbor.Name,
+			X:    neighbor.X,
+			Y:    neighbor.Y,
+		})
+		connections = append(connections, TownConnection{
+			From:     currentTown.ID,
+			To:       neighbor.ID,
+			Distance: math.Hypot(neighbor.X-currentTown.X, neighbor.Y-currentTown.Y),
+		})
+	}
+
+	c.JSON(http.StatusOK, TownConnectionsResponse{
+		Success: true,
+		Towns: []TownNode{{
+			ID:   currentTown.ID,
+			Name: currentTown.Name,
+			X:    currentTown.X,
+			Y:    currentTown.Y,
+		}},
+		Neighbors:   neighbors,
+		Connections: connections,
+	})
+}
+
 func (s *Server) handleGetTown(c *gin.Context) {
 	townID := c.Param("town_id")
 
@@ -246,15 +320,15 @@ func (s *Server) handleGetTown(c *gin.Context) {
 		return
 	}
 
-	_, player, ok := s.authenticatedTraderAndPlayer(c)
+	_, actor, ok := s.authenticatedTraderAndActor(c)
 	if !ok {
 		return
 	}
-	if !s.ensurePlayerPositionForTown(c, player, townID) {
+	if !s.ensureTraderPositionForTown(c, actor, townID) {
 		return
 	}
 
-	prices, err := s.engine.CurrentPrices(town, player)
+	prices, err := s.engine.CurrentPrices(town, actor)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, TownResponse{
 			Success: false,
@@ -299,11 +373,11 @@ func (s *Server) handleBuyTrade(c *gin.Context) {
 		})
 		return
 	}
-	player, err := s.getPlayerByID(trader.PlayerID)
+	actor, err := s.getTraderByID(trader.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, TradeResponse{
 			Success: false,
-			Message: "Player not found",
+			Message: "Trader not found",
 		})
 		return
 	}
@@ -318,9 +392,9 @@ func (s *Server) handleBuyTrade(c *gin.Context) {
 		return
 	}
 
-	result, err := s.engine.Buy(player, town, req.Resource, req.Quantity)
+	result, err := s.engine.Buy(actor, town, req.Resource, req.Quantity)
 	if err != nil {
-		log.Printf("buy trade rejected player=%s town=%s resource=%s quantity=%d err=%v", player.ID, town.ID, req.Resource, req.Quantity, err)
+		log.Printf("buy trade rejected trader=%s town=%s resource=%s quantity=%d err=%v", actor.ID, town.ID, req.Resource, req.Quantity, err)
 		c.JSON(tradeErrorStatus(err), TradeResponse{
 			Success: false,
 			Message: err.Error(),
@@ -329,15 +403,15 @@ func (s *Server) handleBuyTrade(c *gin.Context) {
 	}
 
 	pricePerUnit := models.Currency(int64(result.TradeValue) / req.Quantity)
-	if err := s.recordTradeAndRollbackOnFailure(player, town, req.Resource, req.Quantity, pricePerUnit, "buy", result.TradeValue); err != nil {
-		log.Printf("buy trade persist failed player=%s town=%s resource=%s quantity=%d err=%v", player.ID, town.ID, req.Resource, req.Quantity, err)
+	if err := s.recordTradeAndRollbackOnFailure(actor, town, req.Resource, req.Quantity, pricePerUnit, "buy", result.TradeValue); err != nil {
+		log.Printf("buy trade persist failed trader=%s town=%s resource=%s quantity=%d err=%v", actor.ID, town.ID, req.Resource, req.Quantity, err)
 		c.JSON(http.StatusInternalServerError, TradeResponse{
 			Success: false,
 			Message: "Failed to persist trade",
 		})
 		return
 	}
-	log.Printf("buy trade completed player=%s town=%s resource=%s quantity=%d total=%d", player.ID, town.ID, req.Resource, req.Quantity, result.TradeValue)
+	log.Printf("buy trade completed trader=%s town=%s resource=%s quantity=%d total=%d", actor.ID, town.ID, req.Resource, req.Quantity, result.TradeValue)
 
 	c.JSON(http.StatusOK, TradeResponse{
 		Success:      true,
@@ -367,11 +441,11 @@ func (s *Server) handleSellTrade(c *gin.Context) {
 		return
 	}
 
-	player, err := s.getPlayerByID(trader.PlayerID)
+	actor, err := s.getTraderByID(trader.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, TradeResponse{
 			Success: false,
-			Message: "Player not found",
+			Message: "Trader not found",
 		})
 		return
 	}
@@ -385,9 +459,9 @@ func (s *Server) handleSellTrade(c *gin.Context) {
 		return
 	}
 
-	result, err := s.engine.Sell(player, town, req.Resource, req.Quantity)
+	result, err := s.engine.Sell(actor, town, req.Resource, req.Quantity)
 	if err != nil {
-		log.Printf("sell trade rejected player=%s town=%s resource=%s quantity=%d err=%v", player.ID, town.ID, req.Resource, req.Quantity, err)
+		log.Printf("sell trade rejected trader=%s town=%s resource=%s quantity=%d err=%v", actor.ID, town.ID, req.Resource, req.Quantity, err)
 		c.JSON(tradeErrorStatus(err), TradeResponse{
 			Success: false,
 			Message: err.Error(),
@@ -396,15 +470,15 @@ func (s *Server) handleSellTrade(c *gin.Context) {
 	}
 
 	pricePerUnit := models.Currency(int64(result.TradeValue) / req.Quantity)
-	if err := s.recordTradeAndRollbackOnFailure(player, town, req.Resource, req.Quantity, pricePerUnit, "sell", result.TradeValue); err != nil {
-		log.Printf("sell trade persist failed player=%s town=%s resource=%s quantity=%d err=%v", player.ID, town.ID, req.Resource, req.Quantity, err)
+	if err := s.recordTradeAndRollbackOnFailure(actor, town, req.Resource, req.Quantity, pricePerUnit, "sell", result.TradeValue); err != nil {
+		log.Printf("sell trade persist failed trader=%s town=%s resource=%s quantity=%d err=%v", actor.ID, town.ID, req.Resource, req.Quantity, err)
 		c.JSON(http.StatusInternalServerError, TradeResponse{
 			Success: false,
 			Message: "Failed to persist trade",
 		})
 		return
 	}
-	log.Printf("sell trade completed player=%s town=%s resource=%s quantity=%d total=%d", player.ID, town.ID, req.Resource, req.Quantity, result.TradeValue)
+	log.Printf("sell trade completed trader=%s town=%s resource=%s quantity=%d total=%d", actor.ID, town.ID, req.Resource, req.Quantity, result.TradeValue)
 
 	c.JSON(http.StatusOK, TradeResponse{
 		Success:      true,
@@ -425,7 +499,7 @@ func (s *Server) handleGetTradeHistory(c *gin.Context) {
 		return
 	}
 
-	history, err := s.getTradeHistory(trader.PlayerID)
+	history, err := s.getTradeHistory(trader.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, TradeHistoryResponse{
 			Success: false,
@@ -446,34 +520,34 @@ func (s *Server) handleTravelStatus(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, TravelResponse{Success: false, Message: "No trader authentication"})
 		return
 	}
-	player, err := s.getPlayerByID(trader.PlayerID)
+	actor, err := s.getTraderByID(trader.ID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, TravelResponse{Success: false, Message: "Player not found"})
+		c.JSON(http.StatusNotFound, TravelResponse{Success: false, Message: "Trader not found"})
 		return
 	}
 
-	arrived := s.engine.ResolveArrival(player)
+	arrived := s.engine.ResolveArrival(actor)
 	if arrived && s.db != nil {
-		if err := s.db.PersistPlayerState(player); err != nil {
-			log.Printf("travel status persist failed player=%s err=%v", player.ID, err)
-			c.JSON(http.StatusInternalServerError, TravelResponse{Success: false, Message: "Failed to persist player travel state"})
+		if err := s.db.PersistTraderState(actor); err != nil {
+			log.Printf("travel status persist failed trader=%s err=%v", actor.ID, err)
+			c.JSON(http.StatusInternalServerError, TravelResponse{Success: false, Message: "Failed to persist trader travel state"})
 			return
 		}
-		log.Printf("travel arrival resolved player=%s location=%s", player.ID, player.Location)
+		log.Printf("travel arrival resolved trader=%s location=%s", actor.ID, actor.Location)
 	}
 
-	// In local mode, prefer the canonical in-engine player if it exists.
+	// In local mode, prefer the canonical in-engine trader if it exists.
 	if s.db == nil {
-		if enginePlayer, ok := s.engine.GetPlayer(player.ID); ok {
-			player = enginePlayer
+		if engineTrader, ok := s.engine.GetTrader(actor.ID); ok {
+			actor = engineTrader
 		}
 	}
 
 	c.JSON(http.StatusOK, TravelResponse{
 		Success:  true,
-		PlayerID: player.ID,
-		Location: player.Location,
-		Travel:   &player.Travel,
+		TraderID: actor.ID,
+		Location: actor.Location,
+		Travel:   &actor.Travel,
 	})
 }
 
@@ -489,14 +563,14 @@ func (s *Server) handleTravelStart(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, TravelResponse{Success: false, Message: "No trader authentication"})
 		return
 	}
-	player, err := s.getPlayerByID(trader.PlayerID)
+	actor, err := s.getTraderByID(trader.ID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, TravelResponse{Success: false, Message: "Player not found"})
+		c.JSON(http.StatusNotFound, TravelResponse{Success: false, Message: "Trader not found"})
 		return
 	}
 
-	if err := s.engine.StartTravel(player, req.DestinationTownID, req.Equipment); err != nil {
-		log.Printf("travel start rejected player=%s from=%s to=%s equipment=%s err=%v", player.ID, player.Location, req.DestinationTownID, req.Equipment, err)
+	if err := s.engine.StartTravel(actor, req.DestinationTownID, req.Method); err != nil {
+		log.Printf("travel start rejected trader=%s from=%s to=%s method=%s err=%v", actor.ID, actor.Location, req.DestinationTownID, req.Method, err)
 		status := http.StatusBadRequest
 		if err == market.ErrTownNil || err == market.ErrInvalidDestinationTown {
 			status = http.StatusNotFound
@@ -506,20 +580,20 @@ func (s *Server) handleTravelStart(c *gin.Context) {
 	}
 
 	if s.db != nil {
-		if err := s.db.PersistPlayerState(player); err != nil {
-			log.Printf("travel start persist failed player=%s to=%s err=%v", player.ID, req.DestinationTownID, err)
-			c.JSON(http.StatusInternalServerError, TravelResponse{Success: false, Message: "Failed to persist player travel state"})
+		if err := s.db.PersistTraderState(actor); err != nil {
+			log.Printf("travel start persist failed trader=%s to=%s err=%v", actor.ID, req.DestinationTownID, err)
+			c.JSON(http.StatusInternalServerError, TravelResponse{Success: false, Message: "Failed to persist trader travel state"})
 			return
 		}
 	}
-	log.Printf("travel started player=%s from=%s to=%s equipment=%s arrives_at=%s", player.ID, player.Travel.FromTown, player.Travel.ToTown, player.Travel.Equipment, player.Travel.ArrivesAt.UTC().Format(time.RFC3339))
+	log.Printf("travel started trader=%s from=%s to=%s method=%s arrives_at=%s", actor.ID, actor.Travel.FromTown, actor.Travel.ToTown, actor.Travel.Method, actor.Travel.ArrivesAt.UTC().Format(time.RFC3339))
 
 	c.JSON(http.StatusOK, TravelResponse{
 		Success:  true,
 		Message:  "Travel started",
-		PlayerID: player.ID,
-		Location: player.Location,
-		Travel:   &player.Travel,
+		TraderID: actor.ID,
+		Location: actor.Location,
+		Travel:   &actor.Travel,
 	})
 }
 
@@ -570,17 +644,7 @@ func (s *Server) handleRegisterPlayer(c *gin.Context) {
 		return
 	}
 
-	startTownID, err := s.defaultStartingTownID()
-	if err != nil {
-		log.Printf("register player failed no towns available err=%v", err)
-		c.JSON(http.StatusInternalServerError, RegisterPlayerResponse{
-			Success: false,
-			Message: "no starting town configured",
-		})
-		return
-	}
-
-	player := models.NewPlayer(generatePlayerID(), name, startTownID, 100)
+	player := models.NewPlayer(generatePlayerID(), name)
 
 	if s.db != nil {
 		err = s.db.CreatePlayerWithLocalIdentity(&player, email, passwordHash, passwordSalt)
@@ -617,8 +681,6 @@ func (s *Server) handleRegisterPlayer(c *gin.Context) {
 			ID:               player.ID,
 			Name:             player.Name,
 			Email:            email,
-			Location:         player.Location,
-			Balance:          player.Balance,
 			IdentityProvider: auth.LocalIdentityProvider,
 		},
 	})
@@ -647,7 +709,7 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 			return
 		}
 	} else {
-		_, exists := s.engine.GetPlayer(req.PlayerID)
+		_, exists := s.getInMemoryPlayer(req.PlayerID)
 		if !exists {
 			log.Printf("create trader rejected player not found player=%s", req.PlayerID)
 			c.JSON(http.StatusNotFound, CreateTraderResponse{
@@ -661,12 +723,20 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 	// Generate unique trader ID and token
 	traderID := generateTraderID()
 	token := generateTraderToken()
+	startTownID, err := s.defaultStartingTownID()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, CreateTraderResponse{
+			Success: false,
+			Message: "no starting town configured",
+		})
+		return
+	}
 
 	// Hash the token for storage (we'll store the hash, return the plain token)
 	tokenHash := hashToken(token)
 
 	// Create trader
-	trader := models.NewTrader(traderID, req.PlayerID, req.Name, tokenHash)
+	trader := models.NewTrader(traderID, req.PlayerID, req.Name, tokenHash, startTownID, 100)
 
 	s.storeInMemoryTrader(tokenHash, &trader)
 
@@ -706,33 +776,33 @@ func (s *Server) getAuthenticatedTrader(c *gin.Context) (*models.Trader, bool) {
 	return trader, true
 }
 
-func (s *Server) authenticatedTraderAndPlayer(c *gin.Context) (*models.Trader, *models.Player, bool) {
+func (s *Server) authenticatedTraderAndActor(c *gin.Context) (*models.Trader, *models.Trader, bool) {
 	trader, ok := s.getAuthenticatedTrader(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "No trader authentication"})
 		return nil, nil, false
 	}
 
-	player, err := s.getPlayerByID(trader.PlayerID)
+	actor, err := s.getTraderByID(trader.ID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "player not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "trader not found"})
 		return nil, nil, false
 	}
 
-	return trader, player, true
+	return trader, actor, true
 }
 
-func (s *Server) ensurePlayerPositionForTown(c *gin.Context, player *models.Player, townID string) bool {
-	if strings.TrimSpace(player.Location) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "player has no position"})
+func (s *Server) ensureTraderPositionForTown(c *gin.Context, trader *models.Trader, townID string) bool {
+	if strings.TrimSpace(trader.Location) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "trader has no position"})
 		return false
 	}
-	if player.Travel.InTransit {
-		c.JSON(http.StatusForbidden, gin.H{"error": "player is in transit and cannot access market prices"})
+	if trader.Travel.InTransit {
+		c.JSON(http.StatusForbidden, gin.H{"error": "trader is in transit and cannot access market prices"})
 		return false
 	}
-	if player.Location != townID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "player is not in this town"})
+	if trader.Location != townID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "trader is not in this town"})
 		return false
 	}
 	return true
@@ -761,16 +831,16 @@ func (s *Server) createBulletinEntry(townID string) (models.BulletinBoardEntry, 
 	return entry, ok
 }
 
-func (s *Server) getPlayerByID(playerID string) (*models.Player, error) {
+func (s *Server) getTraderByID(traderID string) (*models.Trader, error) {
 	if s.db != nil {
-		return s.db.GetPlayerByID(playerID)
+		return s.db.GetTraderByID(traderID)
 	}
 
-	if player, ok := s.engine.GetPlayer(playerID); ok {
-		return player, nil
+	if trader, ok := s.engine.GetTrader(traderID); ok {
+		return trader, nil
 	}
 
-	return nil, fmt.Errorf("player not found")
+	return nil, fmt.Errorf("trader not found")
 }
 
 func (s *Server) registerPlayerInMemory(player *models.Player, email, passwordHash, passwordSalt string) error {
@@ -783,7 +853,7 @@ func (s *Server) registerPlayerInMemory(player *models.Player, email, passwordHa
 		return fmt.Errorf("email already registered")
 	}
 
-	s.engine.Players[player.ID] = player
+	s.inMemoryPlayers[player.ID] = player
 	s.inMemoryIdentities[normalizedEmail] = localIdentity{
 		PlayerID:     player.ID,
 		Email:        normalizedEmail,
@@ -793,10 +863,16 @@ func (s *Server) registerPlayerInMemory(player *models.Player, email, passwordHa
 	return nil
 }
 
+func (s *Server) getInMemoryPlayer(playerID string) (*models.Player, bool) {
+	player, ok := s.inMemoryPlayers[playerID]
+	return player, ok
+}
+
 func (s *Server) storeInMemoryTrader(tokenHash string, trader *models.Trader) {
 	s.tradersMu.Lock()
 	defer s.tradersMu.Unlock()
 	s.inMemoryTraders[tokenHash] = trader
+	s.engine.Traders[trader.ID] = trader
 }
 
 func (s *Server) getInMemoryTrader(tokenHash string) (*models.Trader, bool) {
@@ -817,32 +893,33 @@ func (s *Server) townProduction() []models.RefineRecipe {
 func (s *Server) appendInMemoryTrade(entry models.TradeHistoryEntry) {
 	s.historyMu.Lock()
 	defer s.historyMu.Unlock()
-	s.inMemoryHistory[entry.PlayerID] = append([]models.TradeHistoryEntry{entry}, s.inMemoryHistory[entry.PlayerID]...)
+	s.inMemoryHistory[entry.TraderID] = append([]models.TradeHistoryEntry{entry}, s.inMemoryHistory[entry.TraderID]...)
 }
 
-func (s *Server) getTradeHistory(playerID string) ([]models.TradeHistoryEntry, error) {
+func (s *Server) getTradeHistory(traderID string) ([]models.TradeHistoryEntry, error) {
 	if s.db != nil {
-		return s.db.GetTradeHistoryByPlayerID(playerID, 50)
+		return s.db.GetTradeHistoryByTraderID(traderID, 50)
 	}
 
 	s.historyMu.RLock()
 	defer s.historyMu.RUnlock()
-	history := s.inMemoryHistory[playerID]
+	history := s.inMemoryHistory[traderID]
 	copied := make([]models.TradeHistoryEntry, len(history))
 	copy(copied, history)
 	return copied, nil
 }
 
-func (s *Server) recordTradeAndRollbackOnFailure(player *models.Player, town *models.Town, resource models.ResourceID, quantity int64, pricePerUnit models.Currency, tradeType string, totalValue models.Currency) error {
+func (s *Server) recordTradeAndRollbackOnFailure(trader *models.Trader, town *models.Town, resource models.ResourceID, quantity int64, pricePerUnit models.Currency, tradeType string, totalValue models.Currency) error {
 	if s.db != nil {
-		if err := s.db.RecordTrade(player, town.ID, resource, quantity, pricePerUnit, tradeType); err != nil {
-			rollbackTrade(player, town, resource, quantity, totalValue, tradeType)
+		if err := s.db.RecordTrade(trader, town.ID, resource, quantity, pricePerUnit, tradeType); err != nil {
+			rollbackTrade(trader, town, resource, quantity, totalValue, tradeType)
 			return err
 		}
 	}
 
 	s.appendInMemoryTrade(models.TradeHistoryEntry{
-		PlayerID:     player.ID,
+		TraderID:     trader.ID,
+		PlayerID:     trader.PlayerID,
 		TownID:       town.ID,
 		ResourceID:   resource,
 		Quantity:     quantity,
@@ -877,15 +954,15 @@ func normalizeEmail(email string) (string, error) {
 	return normalized, nil
 }
 
-func rollbackTrade(player *models.Player, town *models.Town, resource models.ResourceID, quantity int64, totalValue models.Currency, tradeType string) {
+func rollbackTrade(trader *models.Trader, town *models.Town, resource models.ResourceID, quantity int64, totalValue models.Currency, tradeType string) {
 	switch tradeType {
 	case "buy":
-		player.Balance += totalValue
-		player.Inventory.Remove(resource, quantity)
+		trader.Balance += totalValue
+		trader.Inventory.Remove(resource, quantity)
 		town.Inventory.Add(resource, quantity)
 	case "sell":
-		player.Balance -= totalValue
-		player.Inventory.Add(resource, quantity)
+		trader.Balance -= totalValue
+		trader.Inventory.Add(resource, quantity)
 		town.Inventory.Remove(resource, quantity)
 	}
 }
@@ -922,12 +999,12 @@ func hashToken(token string) string {
 
 func tradeErrorStatus(err error) int {
 	switch err {
-	case market.ErrTownNil, market.ErrPlayerNil:
+	case market.ErrTownNil, market.ErrTraderNil:
 		return http.StatusNotFound
-	case market.ErrInvalidQuantity, market.ErrPlayerNotAtTown, market.ErrResourceUnavailable,
+	case market.ErrInvalidQuantity, market.ErrTraderNotAtTown, market.ErrResourceUnavailable,
 		market.ErrInsufficientFunds, market.ErrUnknownResource, market.ErrInsufficientWeight,
-		market.ErrInsufficientVolume, market.ErrInsufficientTownStock, market.ErrInsufficientPlayerStock,
-		market.ErrPlayerInTransit:
+		market.ErrInsufficientVolume, market.ErrInsufficientTownStock, market.ErrInsufficientTraderStock,
+		market.ErrTraderInTransit:
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

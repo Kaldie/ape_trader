@@ -107,7 +107,7 @@ func (db *Database) InitializeSchemaIfNeeded(schemaPath string) error {
 	}
 	if resourcesTable.Valid {
 		log.Printf("schema initialization skipped: resources table already exists")
-		return db.EnsureIdentitySchema()
+		return nil
 	}
 
 	schemaSQL, err := os.ReadFile(schemaPath)
@@ -120,45 +120,33 @@ func (db *Database) InitializeSchemaIfNeeded(schemaPath string) error {
 	}
 	log.Printf("database schema initialized from %s", schemaPath)
 
-	return db.EnsureIdentitySchema()
-}
-
-func (db *Database) EnsureIdentitySchema() error {
-	_, err := db.conn.Exec(`
-		CREATE TABLE IF NOT EXISTS player_identities (
-			id SERIAL PRIMARY KEY,
-			player_id VARCHAR(100) NOT NULL,
-			provider VARCHAR(50) NOT NULL,
-			subject VARCHAR(255) NOT NULL,
-			password_hash VARCHAR(255),
-			password_salt VARCHAR(255),
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(provider, subject),
-			FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
-		)`)
-	if err != nil {
-		return fmt.Errorf("ensure player_identities table: %w", err)
-	}
-
-	_, err = db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_player_identities_player ON player_identities(player_id)`)
-	if err != nil {
-		return fmt.Errorf("ensure player_identities index: %w", err)
-	}
-
 	return nil
 }
 
 // CreateTrader inserts a new trader into the database
 func (db *Database) CreateTrader(trader *models.Trader) error {
 	query := `
-		INSERT INTO traders (id, player_id, name, token_hash, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO traders (
+			id, player_id, name, location, balance, bag_max_weight, bag_max_volume,
+			travel_in_transit, travel_from_town, travel_to_town, travel_method, travel_started_at, travel_arrives_at,
+			token_hash, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
 
 	_, err := db.conn.Exec(query,
 		trader.ID,
 		trader.PlayerID,
 		trader.Name,
+		trader.Location,
+		trader.Balance,
+		trader.Equipment.Bag.MaxWeight,
+		trader.Equipment.Bag.MaxVolume,
+		trader.Travel.InTransit,
+		nullIfEmpty(trader.Travel.FromTown),
+		nullIfEmpty(trader.Travel.ToTown),
+		nullIfEmpty(trader.Travel.Method),
+		nullTime(trader.Travel.StartedAt),
+		nullTime(trader.Travel.ArrivesAt),
 		trader.Token,
 		trader.CreatedAt,
 		trader.UpdatedAt)
@@ -174,17 +162,10 @@ func (db *Database) CreatePlayerWithLocalIdentity(player *models.Player, email, 
 	defer tx.Rollback()
 
 	if _, err := tx.Exec(`
-		INSERT INTO players (
-			id, name, location, balance, pants_max_weight, pants_max_volume,
-			travel_in_transit, travel_from_town, travel_to_town, travel_equipment, travel_started_at, travel_arrives_at,
-			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, false, NULL, NULL, NULL, NULL, NULL, NOW(), NOW())`,
+		INSERT INTO players (id, name, created_at, updated_at)
+		VALUES ($1, $2, NOW(), NOW())`,
 		player.ID,
 		player.Name,
-		player.Location,
-		player.Balance,
-		player.Pants.MaxWeight,
-		player.Pants.MaxVolume,
 	); err != nil {
 		return err
 	}
@@ -210,15 +191,31 @@ func (db *Database) CreatePlayerWithLocalIdentity(player *models.Player, email, 
 // GetTraderByTokenHash retrieves a trader by their token hash
 func (db *Database) GetTraderByTokenHash(tokenHash string) (*models.Trader, error) {
 	query := `
-		SELECT id, player_id, name, token_hash, created_at, updated_at
+		SELECT id, player_id, name, location, balance, bag_max_weight, bag_max_volume,
+		       travel_in_transit, travel_from_town, travel_to_town, travel_method,
+		       travel_started_at, travel_arrives_at, token_hash, created_at, updated_at
 		FROM traders
 		WHERE token_hash = $1`
 
 	var trader models.Trader
+	var maxWeight, maxVolume int64
+	var inTransit bool
+	var fromTown, toTown, equipment sql.NullString
+	var startedAt, arrivesAt sql.NullTime
 	err := db.conn.QueryRow(query, tokenHash).Scan(
 		&trader.ID,
 		&trader.PlayerID,
 		&trader.Name,
+		&trader.Location,
+		&trader.Balance,
+		&maxWeight,
+		&maxVolume,
+		&inTransit,
+		&fromTown,
+		&toTown,
+		&equipment,
+		&startedAt,
+		&arrivesAt,
 		&trader.Token,
 		&trader.CreatedAt,
 		&trader.UpdatedAt)
@@ -227,28 +224,84 @@ func (db *Database) GetTraderByTokenHash(tokenHash string) (*models.Trader, erro
 		return nil, err
 	}
 
+	trader.Equipment = models.TraderEquipment{
+		Bag: models.Capacity{
+			MaxWeight: models.WeightKg(maxWeight),
+			MaxVolume: models.VolumeL(maxVolume),
+		},
+	}
+	trader.Travel = models.TravelStatus{
+		InTransit: inTransit,
+	}
+	if fromTown.Valid {
+		trader.Travel.FromTown = fromTown.String
+	}
+	if toTown.Valid {
+		trader.Travel.ToTown = toTown.String
+	}
+	if equipment.Valid {
+		trader.Travel.Method = equipment.String
+	}
+	if startedAt.Valid {
+		trader.Travel.StartedAt = startedAt.Time
+	}
+	if arrivesAt.Valid {
+		trader.Travel.ArrivesAt = arrivesAt.Time
+	}
+
+	inventory, err := db.getTraderInventory(trader.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load inventory: %v", err)
+	}
+	trader.Inventory = inventory
+
+	trader.Reputation = make(map[string]int64)
+	if err := db.loadTraderReputation(&trader); err != nil {
+		return nil, fmt.Errorf("failed to load reputation: %v", err)
+	}
+
 	return &trader, nil
 }
 
-// GetPlayerByID retrieves a player by ID (for validation)
+// GetPlayerByID retrieves a player account by ID.
 func (db *Database) GetPlayerByID(playerID string) (*models.Player, error) {
 	query := `
-		SELECT id, name, location, balance, pants_max_weight, pants_max_volume,
-		       travel_in_transit, travel_from_town, travel_to_town, travel_equipment,
-		       travel_started_at, travel_arrives_at
+		SELECT id, name
 		FROM players
 		WHERE id = $1`
 
 	var player models.Player
+	err := db.conn.QueryRow(query, playerID).Scan(
+		&player.ID,
+		&player.Name,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &player, nil
+}
+
+func (db *Database) GetTraderByID(traderID string) (*models.Trader, error) {
+	query := `
+		SELECT id, player_id, name, location, balance, bag_max_weight, bag_max_volume,
+		       travel_in_transit, travel_from_town, travel_to_town, travel_method,
+		       travel_started_at, travel_arrives_at, token_hash, created_at, updated_at
+		FROM traders
+		WHERE id = $1`
+
+	var trader models.Trader
 	var maxWeight, maxVolume int64
 	var inTransit bool
 	var fromTown, toTown, equipment sql.NullString
 	var startedAt, arrivesAt sql.NullTime
-	err := db.conn.QueryRow(query, playerID).Scan(
-		&player.ID,
-		&player.Name,
-		&player.Location,
-		&player.Balance,
+	err := db.conn.QueryRow(query, traderID).Scan(
+		&trader.ID,
+		&trader.PlayerID,
+		&trader.Name,
+		&trader.Location,
+		&trader.Balance,
 		&maxWeight,
 		&maxVolume,
 		&inTransit,
@@ -256,63 +309,63 @@ func (db *Database) GetPlayerByID(playerID string) (*models.Player, error) {
 		&toTown,
 		&equipment,
 		&startedAt,
-		&arrivesAt)
-
+		&arrivesAt,
+		&trader.Token,
+		&trader.CreatedAt,
+		&trader.UpdatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set capacity
-	player.Pants = models.Capacity{
-		MaxWeight: models.WeightKg(maxWeight),
-		MaxVolume: models.VolumeL(maxVolume),
+	trader.Equipment = models.TraderEquipment{
+		Bag: models.Capacity{
+			MaxWeight: models.WeightKg(maxWeight),
+			MaxVolume: models.VolumeL(maxVolume),
+		},
 	}
-	player.Travel = models.TravelState{
-		InTransit: inTransit,
-	}
+	trader.Travel = models.TravelStatus{InTransit: inTransit}
 	if fromTown.Valid {
-		player.Travel.FromTown = fromTown.String
+		trader.Travel.FromTown = fromTown.String
 	}
 	if toTown.Valid {
-		player.Travel.ToTown = toTown.String
+		trader.Travel.ToTown = toTown.String
 	}
 	if equipment.Valid {
-		player.Travel.Equipment = equipment.String
+		trader.Travel.Method = equipment.String
 	}
 	if startedAt.Valid {
-		player.Travel.StartedAt = startedAt.Time
+		trader.Travel.StartedAt = startedAt.Time
 	}
 	if arrivesAt.Valid {
-		player.Travel.ArrivesAt = arrivesAt.Time
+		trader.Travel.ArrivesAt = arrivesAt.Time
 	}
 
-	// Load inventory
-	inventory, err := db.getPlayerInventory(playerID)
+	inventory, err := db.getTraderInventory(traderID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load inventory: %v", err)
 	}
-	player.Inventory = inventory
+	trader.Inventory = inventory
 
-	// Initialize reputation (would need another table query)
-	player.Reputation = make(map[string]int64)
-	if err := db.loadPlayerReputation(&player); err != nil {
+	trader.Reputation = make(map[string]int64)
+	if err := db.loadTraderReputation(&trader); err != nil {
 		return nil, fmt.Errorf("failed to load reputation: %v", err)
 	}
 
-	return &player, nil
+	return &trader, nil
 }
 
-func (db *Database) RecordTrade(player *models.Player, townID string, resourceID models.ResourceID, quantity int64, pricePerUnit models.Currency, tradeType string) error {
+func (db *Database) RecordTrade(trader *models.Trader, townID string, resourceID models.ResourceID, quantity int64, pricePerUnit models.Currency, tradeType string) error {
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if err := db.updatePlayer(tx, player); err != nil {
+	if err := db.updateTrader(tx, trader); err != nil {
 		return err
 	}
-	if err := db.upsertInventory(tx, "player_inventory", "player_id", player.ID, resourceID, player.Inventory.Quantity(resourceID)); err != nil {
+	if err := db.upsertInventory(tx, "trader_inventory", "trader_id", trader.ID, resourceID, trader.Inventory.Quantity(resourceID)); err != nil {
 		return err
 	}
 	if err := db.adjustTownInventory(tx, townID, resourceID, quantity, tradeType); err != nil {
@@ -320,24 +373,24 @@ func (db *Database) RecordTrade(player *models.Player, townID string, resourceID
 	}
 
 	totalCost := models.Currency(int64(pricePerUnit) * quantity)
-	if err := db.insertTradeHistory(tx, player.ID, townID, resourceID, quantity, pricePerUnit, totalCost, tradeType); err != nil {
+	if err := db.insertTradeHistory(tx, trader.ID, trader.PlayerID, townID, resourceID, quantity, pricePerUnit, totalCost, tradeType); err != nil {
 		return err
 	}
 
 	return tx.Commit()
 }
 
-func (db *Database) GetTradeHistoryByPlayerID(playerID string, limit int) ([]models.TradeHistoryEntry, error) {
+func (db *Database) GetTradeHistoryByTraderID(traderID string, limit int) ([]models.TradeHistoryEntry, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
 	rows, err := db.conn.Query(`
-		SELECT id, player_id, town_id, resource_id, quantity, price_per_unit, total_cost, trade_type, created_at
+		SELECT id, trader_id, player_id, town_id, resource_id, quantity, price_per_unit, total_cost, trade_type, created_at
 		FROM trade_history
-		WHERE player_id = $1
+		WHERE trader_id = $1
 		ORDER BY created_at DESC, id DESC
-		LIMIT $2`, playerID, limit)
+		LIMIT $2`, traderID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -349,6 +402,7 @@ func (db *Database) GetTradeHistoryByPlayerID(playerID string, limit int) ([]mod
 		var resourceID string
 		if err := rows.Scan(
 			&entry.ID,
+			&entry.TraderID,
 			&entry.PlayerID,
 			&entry.TownID,
 			&resourceID,
@@ -418,6 +472,67 @@ func (db *Database) LoadTowns() (map[string]*models.Town, error) {
 	return towns, nil
 }
 
+func (db *Database) SeedTowns(towns map[string]*models.Town) error {
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, town := range towns {
+		if _, err := tx.Exec(`
+			INSERT INTO towns (id, name, x, y, prosperity, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+			ON CONFLICT (id) DO NOTHING`,
+			town.ID, town.Name, town.X, town.Y, town.Prosperity,
+		); err != nil {
+			return err
+		}
+
+		for _, neighborID := range town.Neighbors {
+			if _, ok := towns[neighborID]; !ok {
+				continue
+			}
+			if _, err := tx.Exec(`
+				INSERT INTO town_neighbors (town_id, neighbor_id)
+				VALUES ($1, $2)
+				ON CONFLICT (town_id, neighbor_id) DO NOTHING`,
+				town.ID, neighborID,
+			); err != nil {
+				return err
+			}
+		}
+
+		for resourceID, price := range town.MarketMaker.Prices {
+			if _, err := tx.Exec(`
+				INSERT INTO town_supply_demand (town_id, resource_id, supply, demand, base_buy_price, base_sell_price)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (town_id, resource_id) DO NOTHING`,
+				town.ID, string(resourceID), town.Supply[resourceID], town.Demand[resourceID],
+				int64(price.Buy), int64(price.Sell),
+			); err != nil {
+				return err
+			}
+		}
+
+		for resourceID, quantity := range town.Inventory.Snapshot() {
+			if quantity <= 0 {
+				continue
+			}
+			if _, err := tx.Exec(`
+				INSERT INTO town_inventory (town_id, resource_id, quantity)
+				VALUES ($1, $2, $3)
+				ON CONFLICT (town_id, resource_id) DO NOTHING`,
+				town.ID, string(resourceID), quantity,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (db *Database) PersistTownState(town *models.Town) error {
 	if town == nil {
 		return fmt.Errorf("town is nil")
@@ -455,11 +570,11 @@ func (db *Database) PersistTownState(town *models.Town) error {
 	return tx.Commit()
 }
 
-// getPlayerInventory loads a player's inventory from the database
-func (db *Database) getPlayerInventory(playerID string) (models.Inventory, error) {
-	query := `SELECT resource_id, quantity FROM player_inventory WHERE player_id = $1`
+// getTraderInventory loads a trader's inventory from the database
+func (db *Database) getTraderInventory(traderID string) (models.Inventory, error) {
+	query := `SELECT resource_id, quantity FROM trader_inventory WHERE trader_id = $1`
 
-	rows, err := db.conn.Query(query, playerID)
+	rows, err := db.conn.Query(query, traderID)
 	if err != nil {
 		return models.Inventory{}, err
 	}
@@ -483,8 +598,8 @@ func (db *Database) getPlayerInventory(playerID string) (models.Inventory, error
 	return inventory, nil
 }
 
-func (db *Database) loadPlayerReputation(player *models.Player) error {
-	rows, err := db.conn.Query(`SELECT town_id, reputation FROM player_reputation WHERE player_id = $1`, player.ID)
+func (db *Database) loadTraderReputation(trader *models.Trader) error {
+	rows, err := db.conn.Query(`SELECT town_id, reputation FROM trader_reputation WHERE trader_id = $1`, trader.ID)
 	if err != nil {
 		return err
 	}
@@ -496,7 +611,7 @@ func (db *Database) loadPlayerReputation(player *models.Player) error {
 		if err := rows.Scan(&townID, &reputation); err != nil {
 			return err
 		}
-		player.Reputation[townID] = reputation
+		trader.Reputation[townID] = reputation
 	}
 
 	return rows.Err()
@@ -580,32 +695,32 @@ func (db *Database) loadTownSupplyDemand(towns map[string]*models.Town) error {
 	return rows.Err()
 }
 
-func (db *Database) updatePlayer(tx *sql.Tx, player *models.Player) error {
+func (db *Database) updateTrader(tx *sql.Tx, trader *models.Trader) error {
 	_, err := tx.Exec(`
-		UPDATE players
-		SET location = $2, balance = $3, pants_max_weight = $4, pants_max_volume = $5,
+		UPDATE traders
+		SET location = $2, balance = $3, bag_max_weight = $4, bag_max_volume = $5,
 		    travel_in_transit = $6, travel_from_town = $7, travel_to_town = $8,
-		    travel_equipment = $9, travel_started_at = $10, travel_arrives_at = $11,
+		    travel_method = $9, travel_started_at = $10, travel_arrives_at = $11,
 		    updated_at = NOW()
 		WHERE id = $1`,
-		player.ID,
-		player.Location,
-		player.Balance,
-		player.Pants.MaxWeight,
-		player.Pants.MaxVolume,
-		player.Travel.InTransit,
-		nullIfEmpty(player.Travel.FromTown),
-		nullIfEmpty(player.Travel.ToTown),
-		nullIfEmpty(player.Travel.Equipment),
-		nullTime(player.Travel.StartedAt),
-		nullTime(player.Travel.ArrivesAt),
+		trader.ID,
+		trader.Location,
+		trader.Balance,
+		trader.Equipment.Bag.MaxWeight,
+		trader.Equipment.Bag.MaxVolume,
+		trader.Travel.InTransit,
+		nullIfEmpty(trader.Travel.FromTown),
+		nullIfEmpty(trader.Travel.ToTown),
+		nullIfEmpty(trader.Travel.Method),
+		nullTime(trader.Travel.StartedAt),
+		nullTime(trader.Travel.ArrivesAt),
 	)
 	return err
 }
 
-func (db *Database) PersistPlayerState(player *models.Player) error {
-	if player == nil {
-		return fmt.Errorf("player is nil")
+func (db *Database) PersistTraderState(trader *models.Trader) error {
+	if trader == nil {
+		return fmt.Errorf("trader is nil")
 	}
 
 	tx, err := db.conn.Begin()
@@ -614,7 +729,7 @@ func (db *Database) PersistPlayerState(player *models.Player) error {
 	}
 	defer tx.Rollback()
 
-	if err := db.updatePlayer(tx, player); err != nil {
+	if err := db.updateTrader(tx, trader); err != nil {
 		return err
 	}
 
@@ -683,10 +798,11 @@ func (db *Database) getTownInventoryForUpdate(tx *sql.Tx, townID string, resourc
 	return quantity, err
 }
 
-func (db *Database) insertTradeHistory(tx *sql.Tx, playerID, townID string, resourceID models.ResourceID, quantity int64, pricePerUnit, totalCost models.Currency, tradeType string) error {
+func (db *Database) insertTradeHistory(tx *sql.Tx, traderID, playerID, townID string, resourceID models.ResourceID, quantity int64, pricePerUnit, totalCost models.Currency, tradeType string) error {
 	_, err := tx.Exec(`
-		INSERT INTO trade_history (player_id, town_id, resource_id, quantity, price_per_unit, total_cost, trade_type)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		INSERT INTO trade_history (trader_id, player_id, town_id, resource_id, quantity, price_per_unit, total_cost, trade_type)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		traderID,
 		playerID,
 		townID,
 		string(resourceID),

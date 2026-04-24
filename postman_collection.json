@@ -154,6 +154,24 @@
                     "response": []
                 },
                 {
+                    "name": "Get Town Connections",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/towns/connections",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "towns",
+                                "connections"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
                     "name": "Start Travel",
                     "request": {
                         "method": "POST",
