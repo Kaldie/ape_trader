@@ -58,6 +58,10 @@ func main() {
 	}
 
 	engine := market.NewMarketEngineWithTownsAndStore(towns, database)
+	if os.Getenv("DEBUG_FAST_TRAVEL") == "true" {
+		engine.DebugFastTravel = true
+		log.Println("DEBUG: fast travel enabled — travel hours converted to seconds")
+	}
 	engine.StartMinuteTick()
 
 	server := api.NewServer(engine, database)

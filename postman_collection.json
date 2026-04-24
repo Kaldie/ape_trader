@@ -122,6 +122,25 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Get Trader (Me)",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/traders/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "traders",
+                "me"
+              ]
+            }
+          },
+          "response": []
         }
       ],
       "id": "cc2f1b41-6917-4c88-b895-5bf390a0584f"
@@ -390,37 +409,37 @@
   },
   "variable": [
     {
-      "id": "fad9f130-b09d-4ae0-bf13-9d6cad4b394a",
+      "id": "fd176629-3f21-453c-898a-0288bce4fc64",
       "key": "baseUrl",
       "value": "http://localhost:8080",
       "type": "string"
     },
     {
-      "id": "ec2712f7-9686-45a2-8ed8-a61676f2ca0d",
+      "id": "9239ff03-8102-4c23-b107-3e8cc39452a4",
       "key": "townId",
       "value": "apeville",
       "type": "string"
     },
     {
-      "id": "b4391283-ce3c-4fdd-af0c-83af40683f8b",
+      "id": "4441e200-ba6c-4da1-b03d-895ad6322e8c",
       "key": "otherTownId",
       "value": "stonehaven",
       "type": "string"
     },
     {
-      "id": "5b37265f-acc7-449d-8336-2a9351ec5fcb",
+      "id": "3b1f5a61-c71c-4ddd-a326-46ece69f60aa",
       "key": "player_id",
       "value": "",
       "type": "string"
     },
     {
-      "id": "94ae9d88-069e-43cc-bd71-28bde7443a94",
+      "id": "21aef6a0-53bd-413e-a106-ae5c044a62dc",
       "key": "player_email",
       "value": "alice@example.com",
       "type": "string"
     },
     {
-      "id": "3c407292-7eb1-444c-9d99-4039ba72920b",
+      "id": "520ec771-504d-4677-aa2a-d14c03ed44f0",
       "key": "trader_token",
       "value": "",
       "type": "string"

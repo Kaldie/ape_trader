@@ -1,0 +1,7 @@
+neon_api_key  = "your-neon-api-key"           # https://console.neon.tech/app/settings/api-keys
+ghcr_username = "your-github-username"
+ghcr_token    = "ghp_your-pat-with-read-packages"
+app_image     = "ghcr.io/your-github-username/ape-trader-api:latest"
+project_name  = "ape-trader"
+location      = "westeurope"
+neon_region   = "aws-eu-central-1"

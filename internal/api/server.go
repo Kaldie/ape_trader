@@ -174,6 +174,7 @@ func (s *Server) registerRoutes() {
 	authorized := s.router.Group("/")
 	authorized.Use(s.traderAuthMiddleware())
 	{
+		authorized.GET("/traders/me", s.handleGetTrader)
 		authorized.GET("/market/:town_id", s.handleGetMarket)
 		authorized.GET("/town/:town_id", s.handleGetTown)
 		authorized.GET("/towns/connections", s.handleGetTownConnections)
@@ -188,6 +189,18 @@ func (s *Server) registerRoutes() {
 
 func (s *Server) Run(addr string) error {
 	return s.router.Run(addr)
+}
+
+func (s *Server) handleGetTrader(c *gin.Context) {
+	_, actor, ok := s.authenticatedTraderAndActor(c)
+	if !ok {
+		return
+	}
+	s.engine.ResolveArrival(actor)
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"trader":  actor,
+	})
 }
 
 func (s *Server) handleGetMarket(c *gin.Context) {

@@ -47,12 +47,13 @@ var travelBaseSpeedByEquipment = map[string]float64{
 }
 
 type MarketEngine struct {
-	Towns          map[string]*models.Town
-	Traders        map[string]*models.Trader
-	BulletinBoard  *models.BulletinBoard
-	TickerStopChan chan bool
-	Recipes        map[string]models.RefineRecipe
-	TownStateStore TownStateStore
+	Towns            map[string]*models.Town
+	Traders          map[string]*models.Trader
+	BulletinBoard    *models.BulletinBoard
+	TickerStopChan   chan bool
+	Recipes          map[string]models.RefineRecipe
+	TownStateStore   TownStateStore
+	DebugFastTravel  bool
 }
 
 func NewMarketEngine() *MarketEngine {
@@ -504,9 +505,15 @@ func (e *MarketEngine) StartTravel(trader *models.Trader, destinationTownID stri
 	}
 
 	travelHours := (distance * weightPenalty) / baseSpeed
-	travelDuration := time.Duration(travelHours * float64(time.Hour))
-	if travelDuration < time.Minute {
-		travelDuration = time.Minute
+	unit := time.Hour
+	minDuration := time.Minute
+	if e.DebugFastTravel {
+		unit = time.Second
+		minDuration = time.Second
+	}
+	travelDuration := time.Duration(travelHours * float64(unit))
+	if travelDuration < minDuration {
+		travelDuration = minDuration
 	}
 
 	now := time.Now()

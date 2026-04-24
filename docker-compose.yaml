@@ -32,6 +32,7 @@ services:
       DB_USER: apetrader
       DB_PASSWORD: apetrader_pass
       DB_NAME: apetrader_db
+      DEBUG_FAST_TRAVEL: "true"
     ports:
       - "8080:8080"
     networks:
