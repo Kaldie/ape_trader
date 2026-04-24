@@ -5,3 +5,5 @@ go.sum
 apetrader
 postman
 .postman
+.claude
+.codex
